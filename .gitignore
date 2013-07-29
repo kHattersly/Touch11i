@@ -1,0 +1,4 @@
+sc/
+*.xcodeproj/
+html/*orig.png
+html/*.orig

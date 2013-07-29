@@ -1,0 +1,9 @@
+H.vertical_layout = true;
+H.disp_theo_width = 1477.0;
+H.disp_theo_height = 2417.0;
+H.disp_key_offset_x = 9.0;
+H.disp_key_offset_y = 574.0;
+H.disp_key_width = 189;
+H.disp_key_height = 167;
+H.disp_key_dist_x = 254; // 251 254
+H.disp_key_dist_y = 277.6; // 262 277.6
