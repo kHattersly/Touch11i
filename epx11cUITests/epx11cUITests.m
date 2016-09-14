@@ -3,7 +3,7 @@
 //  epx11cUITests
 //
 //  Created by Elvis Pfutzenreuter on 5/4/16.
-//  Copyright © 2016 epx.com.br. All rights reserved.
+//  Copyright © 2016 epxx.co. All rights reserved.
 //
 
 #import <XCTest/XCTest.h>

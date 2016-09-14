@@ -372,7 +372,7 @@
 			isa = PBXProject;
 			attributes = {
 				LastUpgradeCheck = 0700;
-				ORGANIZATIONNAME = epx.com.br;
+				ORGANIZATIONNAME = domain.com;
 				TargetAttributes = {
 					1D6058900D05DD3D006BFB54 = {
 						DevelopmentTeam = LUPFH54KMA;
