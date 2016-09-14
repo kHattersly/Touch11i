@@ -5,6 +5,34 @@
 	<key>PreferenceSpecifiers</key>
 	<array>
 		<dict>
+			<key>Type</key>
+			<string>PSGroupSpecifier</string>
+			<key>Title</key>
+			<string>Keyboard layout</string>
+		</dict>
+		<dict>
+			<key>Type</key>
+			<string>PSMultiValueSpecifier</string>
+			<key>Title</key>
+			<string>Orientation</string>
+			<key>Key</key>
+			<string>lock</string>
+			<key>DefaultValue</key>
+			<integer>0</integer>
+			<key>Titles</key>
+			<array>
+				<string>Auto rotate</string>
+				<string>Horizontal</string>
+				<string>Vertical</string>
+			</array>
+			<key>Values</key>
+			<array>
+				<integer>0</integer>
+				<integer>1</integer>
+				<integer>2</integer>
+			</array>
+		</dict>
+		<dict>
 			<key>Title</key>
 			<string>Key feedback</string>
 			<key>Type</key>
@@ -22,20 +50,69 @@
 		</dict>
 		<dict>
 			<key>Title</key>
-			<string>Numeric format</string>
+			<string>Visual feedback</string>
 			<key>Type</key>
 			<string>PSGroupSpecifier</string>
 		</dict>
 		<dict>
 			<key>DefaultValue</key>
-			<false/>
+			<true/>
 			<key>Key</key>
-			<string>comma</string>
+			<string>fb</string>
 			<key>Title</key>
-			<string>Decimal point is comma</string>
+			<string>Visual feedback</string>
 			<key>Type</key>
 			<string>PSToggleSwitchSpecifier</string>
 		</dict>
+
+
+<dict>
+    <key>Type</key>
+    <string>PSGroupSpecifier</string>
+    <key>Title</key>
+    <string>Numeric format</string>
+</dict>
+<dict>
+    <key>Type</key>
+    <string>PSMultiValueSpecifier</string>
+    <key>Title</key>
+    <string>Numeric format</string>
+    <key>Key</key>
+    <string>separator</string>
+    <key>DefaultValue</key>
+    <integer>0</integer>
+    <key>Titles</key>
+    <array>
+        <string>9,999,999.00</string>
+        <string>9.999.999,00</string>
+        <string>99,99,999.00</string>
+    </array>
+    <key>Values</key>
+    <array>
+        <integer>0</integer>
+        <integer>1</integer>
+        <integer>2</integer>
+    </array>
+</dict>
+
+
+
+        <dict>
+            <key>Title</key>
+            <string>Program speed execution</string>
+            <key>Type</key>
+            <string>PSGroupSpecifier</string>
+        </dict>
+        <dict>
+            <key>DefaultValue</key>
+            <false/>
+            <key>Key</key>
+            <string>rapid</string>
+            <key>Title</key>
+            <string>Fast</string>
+            <key>Type</key>
+            <string>PSToggleSwitchSpecifier</string>
+        </dict>
 	</array>
 	<key>StringsTable</key>
 	<string>Root</string>

@@ -1,4 +1,5 @@
 /*jslint white: true, undef: true, nomen: true, regexp: true, bitwise: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
 
 "use strict";
 
@@ -8,20 +9,28 @@ H.touch_display = false;
 H.vertical_layout = false;
 H.embedded = false;
 
+// These values are changed by Java side in Android packaging
+
 H.disp_theo_width = 700.0;
 H.disp_theo_height = 438.0;
-H.disp_key_offset_x = 44.0;
-H.disp_key_offset_y = 151.0;
-H.disp_key_width = 54;
-H.disp_key_height = 50;
+H.disp_key_offset_x = 44.0 - 6;
+H.disp_key_offset_y = 151.0 - 18;
 H.disp_key_dist_x = (606.0 - 44.0) / 9;
-H.disp_key_dist_y = (364.0 - 151.0) / 3;
+H.disp_key_dist_y = 70;
+H.disp_key_width = H.disp_key_dist_x; // 54;
+H.disp_key_height = H.disp_key_dist_y; // 50;
+
+H.disp_fb_offset_x = 6;
+H.disp_fb_offset_y = 15;
+H.disp_fb_width = 50;
+H.disp_fb_height = 45;
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
@@ -29,6 +38,11 @@ H.disp_key_dist_y = (364.0 - 151.0) / 3;
 H.getElem = function (id)
 {
 	return document.getElementById(id);
+};
+
+H.createElem = function (typ)
+{
+	return document.createElement(typ);
 };
 
 H.badnumber = function (res)
@@ -68,39 +82,60 @@ H.zeropad = function (s, n)
 	return s;
 };
 
-H.i18n = function (s, comma, dp0, grouping)
+H.spacepad = function (s, n)
 {
-	// dp0 means: add decimal point after a whole number
+	s = "" + s;
+	while (s.length < n) {
+		s = " " + s;
+	}
+	return s;
+};
 
-	if (! grouping) {
-		grouping = 3;
+H.i18n = function (s, comma, dp0, non_decimal)
+{
+	var grouping = 3;
+
+	if (non_decimal) {
+		grouping = 4;
+		if (comma === H.INDIAN_SEPARATOR) {
+			comma = H.POINT_DECIMAL_SEPARATOR;
+		}
 	}
 
+	// dp0 means: add decimal point after a whole number
 	var dpos = s.indexOf('.');
-
-	if (dpos == -1 && dp0) {
+	if (dpos === -1 && dp0) {
 		s += ".";
 		dpos = s.length - 1;
 	}
 
-	if (dpos != -1 && comma) {
+	/* Replace decimal point by comma */
+	if (dpos !== -1 && comma === H.COMMA_DECIMAL_SEPARATOR) {
 		s = s.slice(0, dpos) + ',' + s.slice(dpos + 1);
 	}
 
 	if (dpos == -1) {
+		// no decimal separator
 		// phantom position to satisfy loop ahead
 		dpos = s.length;
 	}
 
-	var ts = comma ? "." : ",";
+	/* Thousands separator */
+	var ts = (comma === H.COMMA_DECIMAL_SEPARATOR) ? "." : ",";
 
+	/* find where whole part begins */
 	var dstop = 0;
 	while (dstop < s.length && isNaN(parseInt(s.charAt(dstop), 16))) {
 		++dstop;
 	}
 
+	/* Add thousands separator, from right to left */
 	for (var e = dpos - grouping; e > dstop; e -= grouping) {
 		s = s.slice(0, e) + ts + s.slice(e);
+		if (comma === H.INDIAN_SEPARATOR) {
+			// India numeric system: 1234567.1 -> 12,34,567.1
+			grouping = 2;
+		}
 	}
 
 	return s;
@@ -209,7 +244,19 @@ H.date_to_show = function (dd, dmy)
 	if (dow === 0) {
 		dow = 7;
 	}
-	return H.date_gen(dd, dmy).toFixed(6) + "  " + dow;
+
+	var datestring = "";
+	if (dmy) {
+		datestring = " " + H.spacepad(dd.getDate(), 2) + "." +
+				H.zeropad(dd.getMonth() + 1, 2) + "." +
+				H.zeropad(dd.getFullYear(), 4);
+	} else {
+		datestring = " " + H.spacepad(dd.getMonth() + 1, 2) + "." +
+				H.zeropad(dd.getDate(), 2) + "." +
+				H.zeropad(dd.getFullYear(), 4);
+	}
+
+	return datestring + " " + dow;
 };
 
 H.is_12c = function ()
@@ -219,13 +266,13 @@ H.is_12c = function ()
 		H.type === "12c-bs";
 };
 
-/* Some browsers don't have console.log */
+/* Some browsers don't have window.console.log */
 window.console = window.console || {};
 window.console.log = window.console.log || function (msg) {};
-if (typeof console === "undefined") {
-	console = window.console;
-}
-console.log = console.log || window.console.log;
+// should default to console.log in production
+window.xlog = window.xlog || function (msg) { window.console.log(msg); };
+// should be null in production
+window.console.ut_snap = window.console.ut_snap || function (mode) {};
 
 H.type_cookie = "hp12c";
 if (H.type === "12c-platinum") {
@@ -234,6 +281,8 @@ if (H.type === "12c-platinum") {
 	H.type_cookie = "hp12cbs";
 } else if (H.type === "11c") {
 	H.type_cookie = "hp11c";
+} else if (H.type === "10c") {
+	H.type_cookie = "hp10c";
 } else if (H.type === "15c") {
 	H.type_cookie = "hp15c";
 } else if (H.type === "16c") {
@@ -244,6 +293,7 @@ H.INTERACTIVE = 0;
 H.PROGRAMMING = 1;
 H.RUNNING = 2;
 H.RUNNING_STEP = 3;
+H.RUNNING_STEP_PRE = 4;
 
 // financial constants (12c)
 H.FIN_N = 0;
@@ -260,7 +310,7 @@ H.STAT_Y  = 4;
 H.STAT_Y2 = 5;
 H.STAT_XY = 6;
 
-if (H.type === "11c") {
+if (H.type === "11c" || H.type === "10c") {
 	H.STAT_N  = 0;
 	H.STAT_X  = 1;
 	H.STAT_X2 = 2;
@@ -326,8 +376,8 @@ H.radix_suffix[H.NOTATION_INT_OCT] = "o";
 H.radix_suffix[H.NOTATION_INT_DEC] = "d";
 H.radix_suffix[H.NOTATION_INT_BIN] = "b";
 
-H.value_max = 9.999999 * Math.pow(10, 99);
-H.value_min = Math.pow(10, -99);
+H.value_max = 9.999999 * 1e99;
+H.value_min = 1e-99;
 
 // 12C defaults
 H.ram_MAX = 100;
@@ -345,17 +395,20 @@ if (H.type === "12c-platinum") {
 	H.ram_ADDR_SIZE = 3;
 	H.STOP_INSTRUCTION = "43.33.000";
 } else if (H.type === "11c") {
-	H.ram_MAX = 203;
+	H.ram_MAX = 204;
 	H.ram_ADDR_SIZE = 3;
 	H.STOP_INSTRUCTION = "50";
 	H.STOP_INSTRUCTION_IS_INVALID = true;
+} else if (H.type === "10c") {
+	H.STOP_INSTRUCTION = "22.00";
+	H.ram_MAX = 80;
 } else if (H.type === "16c") {
-	H.ram_MAX = 203;
+	H.ram_MAX = 204;
 	H.ram_ADDR_SIZE = 3;
 	H.STOP_INSTRUCTION = "50";
 	H.STOP_INSTRUCTION_IS_INVALID = true;
 } else if (H.type === "15c") {
-	H.ram_MAX = 322;
+	H.ram_MAX = 448;
 	H.ram_ADDR_SIZE = 3;
 	H.STOP_INSTRUCTION = "50";
 	H.STOP_INSTRUCTION_IS_INVALID = true;
@@ -372,6 +425,8 @@ if (H.type == "12c-platinum") {
 	H.MEM_MAX = 100;
 } else if (H.type === "15c") {
 	H.MEM_MAX = 66;
+} else if (H.type === "10c") {
+	H.MEM_MAX = 10;
 }
 
 H.FLAGS_MAX = 2;
@@ -381,6 +436,12 @@ if (H.type === "16c") {
 } else if (H.type === "15c") {
 	H.FLAGS_MAX = 10;
 }
+
+// Decimal separators
+H.POINT_DECIMAL_SEPARATOR = 0;
+H.COMMA_DECIMAL_SEPARATOR = 1;
+H.INDIAN_SEPARATOR = 2;
+H.SEPARATORS = 3;
 
 // 16C flags
 H.FLAG_ZEROS = 3;
@@ -476,6 +537,16 @@ H.cancel_delay = function (handle)
 	return window.clearTimeout(handle);
 };
 
+H.periodic = function (f, ms)
+{
+	return window.setInterval(f, ms);
+};
+
+H.cancel_periodic = function (handle)
+{
+	return window.clearInterval(handle);
+};
+
 H.defer = function (f)
 {
 	return H.delay(f, 0);
@@ -483,14 +554,144 @@ H.defer = function (f)
 
 H.error = function (msg)
 {
-	console.log(msg);
+	window.xlog(msg);
 };
+
+H.mod_stt = null;
+
+H.modifier_table = function ()
+{
+	if (H.mod_stt) {
+		return H.mod_stt;
+	}
+
+	var a = [];
+
+	a[0] = "";
+	a[H.FF] = "f";
+	a[H.GG] = "g";
+	a[H.STO] = "STO";
+	a[H.STO2] = "STO★";
+	a[H.RCL] = "RCL";
+	a[H.RCL2] = "RCL★";
+	
+	if (H.type !== "16c") {
+		a[H.STO_PLUS] = "STO+";
+		a[H.STO_MINUS] = "STO-";
+		a[H.STO_TIMES] = "STO×";
+		a[H.STO_DIVIDE] = "STO÷";
+	}
+
+	a[H.GTO] = "GTO";
+	a[H.GTO_MOVE] = "GTO★";
+
+	// models without RCL g still use as apocryphal key
+	a[H.RCL_GG] = "RCL g";
+
+	if (H.type === "11c" || H.type === "15c") {
+		a[H.HYP] = "HYP";
+		a[H.HYPINV] = "HYP-1";
+		a[H.LBL] = "LBL";
+		a[H.GSB] = "GSB";
+		a[H.FIX] = "FIX";
+		a[H.SCI] = "SCI";
+		a[H.ENG] = "ENG";
+		a[H.STO_FF] = "STO f";
+		a[H.RCL_FF] = "RCL f";
+		a[H.GG_SF] = "SF";
+		a[H.GG_CF] = "CF";
+		a[H.GG_FQUESTION] = "F?";
+
+		a[H.STO_PLUS_FF] = "STO+ f";
+		a[H.STO_MINUS_FF] = "STO- f";
+		a[H.STO_TIMES_FF] = "STO× f";
+		a[H.STO_DIVIDE_FF] = "STO÷ f";
+	}
+
+	if (H.type === "10c") {
+		a[H.FIX] = "FIX";
+		a[H.SCI] = "SCI";
+		a[H.ENG] = "ENG";
+	}
+
+	if (H.type === "15c") {
+		a[H.GTO_DOT] = "GTO★";
+		a[H.GSB_DOT] = "GSB★";
+		a[H.LBL_DOT] = "LBL★";
+
+		a[H.STO_PLUS_DOT] = "STO+★";
+		a[H.STO_MINUS_DOT] = "STO-★";
+		a[H.STO_TIMES_DOT] = "STO×★";
+		a[H.STO_DIVIDE_DOT] = "STO÷★";
+
+		a[H.RCL_PLUS] = "RCL+";
+		a[H.RCL_MINUS] = "RCL-";
+		a[H.RCL_TIMES] = "RCL×";
+		a[H.RCL_DIVIDE] = "RCL÷";
+
+		a[H.RCL_PLUS_DOT] = "RCL+★";
+		a[H.RCL_MINUS_DOT] = "RCL-★";
+		a[H.RCL_TIMES_DOT] = "RCL×★";
+		a[H.RCL_DIVIDE_DOT] = "RCL÷★";
+
+		a[H.RCL_PLUS_FF] = "STO+ f";
+		a[H.RCL_MINUS_FF] = "STO- f";
+		a[H.RCL_TIMES_FF] = "STO× f";
+		a[H.RCL_DIVIDE_FF] = "STO÷ f";
+
+		a[H.FF_EXCHANGE] = "X⇄";
+		a[H.FF_EXCHANGE_DOT] = "X⇄★";
+
+		a[H.SOLVE] = "SOLV";
+		a[H.SOLVE_DOT] = "SOLV★";
+		a[H.INTEG] = "INTG";
+		a[H.INTEG_DOT] = "INTG★";
+		a[H.GG_TEST] = "TEST";
+
+		a[H.DIM] = "DIM";
+		a[H.RCL_DIM] = "RCL D";
+		a[H.MATRIX] = "M";
+		a[H.STO_GG] = "STO g";
+		a[H.STO_MATRIX] = "STO M";
+		a[H.STO_FF_MATRIX] = "STO M";
+		a[H.RCL_MATRIX] = "RCL M";
+		a[H.RCL_FF_MATRIX] = "RCL M";
+		a[H.RESULT] = "Res";
+
+		a[H.ISG] = "ISG";
+		a[H.ISG_DOT] = "ISG★";
+		a[H.DSE] = "DSE";
+		a[H.DSE_DOT] = "DSE★";
+	}
+
+	if (H.type === "16c") {
+		a[H.LBL] = "LBL";
+		a[H.GSB] = "GSB";
+		a[H.GG_SF] = "SF";
+		a[H.GG_CF] = "CF";
+		a[H.GG_FQUESTION] = "F?";
+		a[H.STO_FF] = "STO f";
+		a[H.RCL_FF] = "RCL f";
+		a[H.WINDOW] = "WINDOW";
+		a[H.FLOAT] = "FLOAT";
+	}
+
+	H.mod_stt = a;
+	return H.mod_stt;
+};
+
+H.MODAL_NONE = 0;
+H.MODAL_PAUSE = 1;
+H.MODAL_PRESS = 2;
+H.MODAL_MISC = 3;
+H.MODAL_ERROR = 4;
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, bitwise: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
@@ -647,7 +848,6 @@ Hp12c_debug.prototype.show_memory2 = function ()
 		}
 	}
 
-	// closure trick, since 'this' changes meaning inside setTimeout
 	H.delay(function () {
 		self.show_memory2();
 	}, 1000);
@@ -662,273 +862,44 @@ Hp12c_debug.prototype.show_memory = function ()
 		self.show_memory2();
 	}, 1000);
 };
-/* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
- * All rights reserved.
- */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, sub: true */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
 
-function Hp12c_display()
+H.display_max = 9999999999;
+H.display_len = 10; // without extra -
+H.display_min = 0.0000000001;
+
+H.format_result_armored = function (n, decs, notation, co)
 {
-	this.display_max = 9999999999;
-	this.display_len = 10; // without extra -
-	this.display_min = 0.0000000001;
-	this.lcd = [];
-	this.contents = "";
-	this.contents_alt = "";
-	this.blink_delay = 25;
-	this.blink_handle = null;
-	this.overflow_blink = false;
-	this.overflow_blink_timer = null;
-	this.overflow_blink_freq = 250; // ms
+	n = n.r || 0;
 
-	var LCD_A = 1;
-	var LCD_B = 2;
-	var LCD_C = 4;
-	var LCD_D = 8;
-	var LCD_E = 16;
-	var LCD_F = 32;
-	var LCD_G = 64;
-	var LCD_P = 128;
-	var LCD_T = 256;
-
-	this.lcdmap = [];
-
-	this.lcdmap['0'] = LCD_A | LCD_B | LCD_C | LCD_E | LCD_F | LCD_G;
-	this.lcdmap['1'] = LCD_C | LCD_F;
-	this.lcdmap['2'] = LCD_A | LCD_C | LCD_D | LCD_E | LCD_G;
-	this.lcdmap['3'] = LCD_A | LCD_C | LCD_D | LCD_F | LCD_G;
-	this.lcdmap['4'] = LCD_B | LCD_C | LCD_D | LCD_F;
-	this.lcdmap['5'] = LCD_A | LCD_B | LCD_D | LCD_F | LCD_G;
-	this.lcdmap['6'] = LCD_A | LCD_B | LCD_D | LCD_E | LCD_F | LCD_G;
-	this.lcdmap['7'] = LCD_A | LCD_C | LCD_F;
-	this.lcdmap['8'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_E | LCD_F | LCD_G;
-	this.lcdmap['9'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_F | LCD_G;
-	this.lcdmap[' '] = 0;
-	this.lcdmap['.'] = LCD_P;
-	this.lcdmap[','] = LCD_P | LCD_T;
-	this.lcdmap['r'] = LCD_A | LCD_B;
-	this.lcdmap['U'] = LCD_B | LCD_C | LCD_E | LCD_F | LCD_G;
-	this.lcdmap['u'] = LCD_B | LCD_C | LCD_D;
-	this.lcdmap['n'] = LCD_B | LCD_C | LCD_A;
-	this.lcdmap['i'] = LCD_B;
-	this.lcdmap['g'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_F | LCD_G;
-	this.lcdmap['-'] = LCD_D;
-	this.lcdmap['A'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_E | LCD_F;
-	this.lcdmap['a'] = this.lcdmap['A'];
-	this.lcdmap['B'] = LCD_B | LCD_D | LCD_E | LCD_F | LCD_G;
-	this.lcdmap['b'] = this.lcdmap['B'];
-	this.lcdmap['c'] = LCD_D | LCD_E | LCD_G;
-	this.lcdmap['C'] = this.lcdmap['c'];
-	this.lcdmap['d'] = LCD_C | LCD_D | LCD_E | LCD_F | LCD_G;
-	this.lcdmap['D'] = this.lcdmap['d'];
-	this.lcdmap['E'] = LCD_A | LCD_B | LCD_D | LCD_E | LCD_G;
-	this.lcdmap['e'] = this.lcdmap['E'];
-	this.lcdmap['F'] = LCD_A | LCD_B | LCD_D | LCD_E;
-	this.lcdmap['f'] = this.lcdmap['F'];
-	this.lcdmap['H'] = LCD_B | LCD_C | LCD_D | LCD_E | LCD_F;
-	this.lcdmap['h'] = LCD_B |         LCD_D | LCD_E | LCD_F;
-	this.lcdmap['o'] = LCD_D | LCD_E | LCD_F | LCD_G;
-	this.lcdmap['O'] = this.lcdmap["o"];
-	this.lcdmap['R'] = LCD_D | LCD_E;
-	this.lcdmap['P'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_E;
-	this.lcdmap[':'] = LCD_P;
-
-	for (var e = 0; e <= 10; ++e) {
-		this.lcd[e] = [];
-		this.lcd[e][0] = 0;
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "a");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "b");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "c");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "d");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "e");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "f");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "g");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "p");
-		this.lcd[e][this.lcd[e].length] = H.getElem("lcd" + e + "t");
-	}
-	
-	this.display = H.getElem("display");
-	this.dbegin = H.getElem("begin");
-	this.ddmyc = H.getElem("dmyc");
-	this.dmodifier = H.getElem("modifier");
-	this.pgrm = H.getElem("pgrm");
-	this.rpnalg = H.getElem("rpnalg");
-	this.trigo = H.getElem("trigo");
-	this.user = H.getElem("user");
-	this.carry = H.getElem("carry");
-	this.overflow = H.getElem("overflow");
-	this.complex = H.getElem("complex");
-	this.altdisplay = H.getElem("altdisplay");
-	this.wordstatus = H.getElem("wordstatus");
-	this.undo = H.getElem("undo");
-	this.parentheses = H.getElem("parentheses");
-
-	this.clear();
-}
-
-Hp12c_display.prototype.setInnerHTML = function (name, txt)
-{
-	if (H.embedded) {
-		this.display.setInnerHTML(name, txt);
-	} else {
-		var tgt = this[name];
-		if (tgt) {
-			tgt.innerHTML = txt;
-		}
-	}
-};
-
-Hp12c_display.prototype.private_lcd_display = function (txt) 
-{
-	var f = -1;
-	var buffer = [];
-
-	for (var e = 0; e < txt.length && f < this.lcd.length; ++e) {
-		var merge = false;
-		var val = txt.charAt(e);
-		++f;
-		if ((val == '.' || val == ',') && f > 0) {
-			// merge decimal point/thousand separator
-			--f;
-			merge = true;
-		}
-		if (! this.lcdmap[val]) {
-			val = ' ';
-		}
-		var map = this.lcdmap[val];
-		buffer[f] = map | (merge ? buffer[f] : 0);
-	}
-	for (++f; f < this.lcd.length; ++f) {
-		buffer[f] = 0;
+	if (n > H.value_max) {
+		n = H.value_max;
+	} else if (n < -H.value_max) {
+		n = -H.value_max;
+	} else if (Math.abs(n) < H.value_min) {
+		n = 0;
 	}
 
-	if (H.embedded) {
-		this.display.showDisplay(buffer);
-		return;
-	}
-
-	for (f = 0; f < buffer.length; ++f) {
-		map = buffer[f];
-		for (var segm = 1; segm < 10; ++segm) {
-			var bit = 1 << (segm - 1);
-			var visibility = (map & bit) ? "visible" : "hidden";
-			if (this.lcd[f][segm].style.visibility !== visibility) {
-				this.lcd[f][segm].style.visibility = visibility;
-			}
-		}
-	}
+	return H.format_result(n, decs, notation, co);
 };
 
-Hp12c_display.prototype.show = function (txt)
+// called by unit tests
+H.format_result_ut = function (n)
 {
-	// console.log("display show: " + txt);
-	this.cancel_overflow_blink();
-	this.contents = txt;
-	this.private_lcd_display(txt);
-	this.start_overflow_blink();
+	return H.format_result(n, H.machine.decimals, H.machine.notation, H.machine.comma);
 };
 
-Hp12c_display.prototype.set_blink = function (blinks)
-{
-	this.overflow_blink = blinks;
-	this.cancel_overflow_blink();
-	this.start_overflow_blink();
-};
-
-Hp12c_display.prototype.cancel_overflow_blink = function ()
-{
-	if (this.overflow_blink_timer) {
-		window.clearInterval(this.overflow_blink_timer);
-		this.overflow_blink_timer = null;
-	}
-};
-
-Hp12c_display.prototype.start_overflow_blink = function ()
-{
-	var self = this;
-
-	if (! this.overflow_blink) {
-		return;
-	}
-
-	this.overflow_blink_on = true;
-	this.overflow_blink_timer =
-		window.setInterval(function () {
-			self.overflow_blink_on = ! self.overflow_blink_on;
-			if (self.overflow_blink_on) {
-				self.private_lcd_display(self.contents);
-			} else {
-				self.private_lcd_display("");
-			}
-		},
-		this.overflow_blink_freq);
-};
-
-Hp12c_display.prototype.show_alt = function (txt)
-{
-	this.contents_alt = txt;
-	this.setInnerHTML("altdisplay", txt);
-};
-
-Hp12c_display.prototype.html_wrap = function (txt)
-{
-	var j = 0;
-	var c;
-	for (var i = 0; i < txt.length; ++i) {
-		c = txt.charAt(i);
-		++j;
-		if (j > 13 || (j > 9 && (c === "." || c === ","))) {
-			txt = txt.substr(0, i + 1) + "<br>" + txt.substr(i + 1);
-			i += 4;
-			j = 0;
-		}
-	}
-
-	return txt;
-};
-
-Hp12c_display.prototype.show_wordstatus = function (txt)
-{
-	this.setInnerHTML("wordstatus", txt);
-};
-
-Hp12c_display.prototype.show_parentheses = function (txt)
-{
-	this.setInnerHTML("parentheses", txt);
-};
-
-Hp12c_display.prototype.show_undo = function (enabled)
-{
-	this.setInnerHTML("undo", enabled ? "u" : "");
-};
-
-Hp12c_display.prototype.clear = function ()
-{
-	this.private_lcd_display("");
-	this.show_alt("");
-	this.show_wordstatus("");
-};
-
-Hp12c_display.prototype.format_result_tuple = function (t)
-{
-	if (H.machine.notation < H.NOTATION_INT) {
-		return this.format_result(t.r);
-	}
-	return this.format_result_int(t);
-};
-
-Hp12c_display.prototype.format_result = function (n)
+H.format_result = function (n, decs, notation, co)
 {
 	var res = "";
 	var absn = Math.abs(n);
-	var fix_dec = H.machine.decimals;
-	var mantissa_dec = H.machine.decimals;
-	var notation = H.machine.notation;
+	var fix_dec = decs;
+	var mantissa_dec = decs;
 	var degenerate = 0;
 	var scale;
 	var mantissa;
@@ -953,19 +924,29 @@ Hp12c_display.prototype.format_result = function (n)
 		absn = n = 0;
 	}
 
-	var co = H.machine.comma;
-
 	if (notation == H.NOTATION_FIX) {
-		mantissa_dec = 6;
-		if (absn > this.display_max) {
+		// note that 12C and 16C are hardwired to FIX
+		if (H.type === "15c" || H.type === "11c" || H.type === "10c") {
+		} else {
+			// 12C, 16C: show all decimals we can if SCI mode
+			mantissa_dec = 6;
+		}
+		if (absn > H.display_max) {
 			// too big to be shown normally
 			notation = H.NOTATION_SCI;
 		} else if (absn !== 0 && scale < -9) {
-			// too small to be shown normally
+			// too small to be shown at all
 			notation = H.NOTATION_SCI;
 		} else if (absn !== 0 && fix_dec < (-scale)) {
-			// we need more decimals to show this number
-			fix_dec = -scale;
+			// too small to be shown with current decimal count
+			if (H.type === "15c" || H.type === "11c" || H.type === "10c") {
+				// change to SCI
+				notation = H.NOTATION_SCI;
+			} else {
+				// 12C, 16C
+				// we need more decimals to show this number
+				fix_dec = -scale;
+			}
 		}
 	}
 
@@ -1025,7 +1006,7 @@ Hp12c_display.prototype.format_result = function (n)
 		// -3: exponential plus space/expo signal
 		// +1: compressed decimal point (always present, even if mantissa_dec == 0)
 		// +1: negative sign
-		var max_m_len = this.display_len - 3 + 1 + 1;
+		var max_m_len = H.display_len - 3 + 1 + 1;
 
 		res = res.substr(0, max_m_len);
 		while (res.length < max_m_len) {
@@ -1041,7 +1022,7 @@ Hp12c_display.prototype.format_result = function (n)
 		} else {
 			res = res + " " + H.zeropad(scale.toFixed(0), 2);
 		}
-		// console.log(" " + n + " " + mantissa + " " + scale + " d " + degenerate + " " + res);
+		// window.xlog(" " + n + " " + mantissa + " " + scale + " d " + degenerate + " " + res);
 
 		return res;
 	}
@@ -1051,9 +1032,9 @@ Hp12c_display.prototype.format_result = function (n)
 	var sgn = n < 0 ? "-" : " ";
 	n = Math.abs(n);
 	var ll = n.toFixed(dec).length - (dec > 0 ? 1 : 0);
-	if (ll > this.display_len) {
+	if (ll > H.display_len) {
 		// reduce decimals if too big for display
-		dec -= (ll - this.display_len);
+		dec -= (ll - H.display_len);
 		dec = Math.max(0, dec);
 	}
 	res = H.i18n(sgn + n.toFixed(dec), co, 1);
@@ -1061,55 +1042,45 @@ Hp12c_display.prototype.format_result = function (n)
 	return res;
 };
 
-Hp12c_display.prototype.get_radix = function ()
+H.format_result_integer = function (t, notation, negative_repr, wordsize)
 {
-	var radix = H.radix[H.machine.notation];
-	var suffix = H.radix_suffix[H.machine.notation];
-
-	return [radix, suffix];
+	var radix = H.get_radix(notation)[0];
+	return H.format_integer_to_string(t, radix, negative_repr, wordsize);
 };
 
-Hp12c_display.prototype.integer_to_string = function (t, radix)
+// used only for debugging purposes, so it may use H.machine
+H.format_result_tuple = function (t)
 {
-	// for non-decimal, how as unsigned
-	var negative_repr = 0;
-	if (radix === 10) {
-		negative_repr = H.machine.negative_repr;
+	var notation = H.machine.notation;
+	if (notation < H.NOTATION_INT) {
+		var co = H.machine.comma;
+		var decs = H.machine.decimals;
+		return H.format_result(t.r, decs, notation, co);
 	}
-
-	var spure = H.integer_to_string(t,
-					negative_repr,
-					H.machine.wordsize,
-					radix,
-					true);
-
-	return spure;
+	var negative_repr = H.machine.negative_repr;
+	var wordsize = H.machine.wordsize;
+	return H.format_result_integer(t, notation, negative_repr, wordsize);
 };
 
-Hp12c_display.prototype.format_result_int = function (t)
-{
-	var radix = this.get_radix()[0];
-	return this.integer_to_string(t, radix);
-};
-
-Hp12c_display.prototype.p_display_integer = function (x, xmode, typed_digits)
+H.format_integer = function (x, xmode, typed_digits, altdisplay, notation, wordsize,
+				window_count, intwindow, zeros_flag, co, negative_repr)
 {
 	var typing = xmode > -100; // -100, -1, 0
 	var point1 = "";
 	var point2 = "";
 	var sign = " ";
-	var show_apocryphal = (H.machine.altdisplay > 0);
+	var show_apocryphal = (altdisplay > 0);
 
-	var radix = this.get_radix();
+	var radix = H.get_radix(notation);
 	var suffix = radix[1];
 	radix = radix[0];
 
-	var spure = this.integer_to_string(x, radix);
+	var spure = H.format_integer_to_string(x, radix, negative_repr, wordsize);
 	var spure16;
 	if (radix === 2) {
-		spure16 = this.integer_to_string(x, 16);
+		spure16 = H.format_integer_to_string(x, 16, negative_repr, wordsize);
 	}
-	// console.log(spure);
+	// window.xlog(spure);
 
 	if (spure.substr(0, 1) === "-") {
 		spure = spure.substr(1);
@@ -1119,10 +1090,10 @@ Hp12c_display.prototype.p_display_integer = function (x, xmode, typed_digits)
 	var s, sfull;
 	var len = 8;
 
-	var bits_per_digit = H.digit_bits[H.machine.notation];
-	var digits_on_display = H.win_digits[H.machine.notation];
-	var tot_digits = Math.ceil(H.machine.wordsize / bits_per_digit);
-	var wincount = H.machine.window_count();
+	var bits_per_digit = H.digit_bits[notation];
+	var digits_on_display = H.win_digits[notation];
+	var tot_digits = Math.ceil(wordsize / bits_per_digit);
+	var wincount = window_count;
 	var tot_digits_ceil = wincount * digits_on_display;
 
 	var si2 = spure;
@@ -1136,13 +1107,13 @@ Hp12c_display.prototype.p_display_integer = function (x, xmode, typed_digits)
 		}
 	}
 
-	var current_window = typing ? 0 : H.machine.intwindow;
+	var current_window = typing ? 0 : intwindow;
 
 	show_apocryphal = show_apocryphal &&
 				(significant_windows > 1 || current_window > 0);
 
 	var filler = " ";
-	if (H.machine.get_zeros_flag() && radix !== 10) {
+	if (zeros_flag && radix !== 10) {
 		filler = "0";
 	}
 
@@ -1194,7 +1165,7 @@ Hp12c_display.prototype.p_display_integer = function (x, xmode, typed_digits)
 		si2 += "0";
 		r10comp++;
 	}
-	si2 = H.i18n(si2, H.machine.comma, 0, radix === 10 ? 3 : 4);
+	si2 = H.i18n(si2, co, 0, radix !== 10);
 	// Remove LSB compensation, if it was made above
 	if (radix === 10 && r10comp > 0) {
 		si2 = si2.substr(0, si2.length - r10comp);
@@ -1202,115 +1173,49 @@ Hp12c_display.prototype.p_display_integer = function (x, xmode, typed_digits)
 	s = lcdsign + si2 + " " + point1 + suffix + point2;
 
 	sfull = sign + (radix === 2 ? spure16 : spure);
-	sfull = H.i18n(sfull, H.machine.comma, 0, radix === 10 ? 3 : 4);
+	sfull = H.i18n(sfull, co, 0, radix !== 10);
 
-	this.show(s);
-	if (show_apocryphal) {
-		this.show_alt(this.html_wrap(sfull));
-	} else {
-		this.show_alt("");
+	return [s, sfull, show_apocryphal];
+};
+
+H.html_wrap = function (txt) {
+	var j = 0;
+	var c;
+	for (var i = 0; i < txt.length; ++i) {
+		c = txt.charAt(i);
+		++j;
+		if (j > 13 || (j > 9 && (c === "." || c === ","))) {
+			txt = txt.substr(0, i + 1) + "<br>" + txt.substr(i + 1);
+			i += 4;
+			j = 0;
+		}
 	}
+
+	return txt;
 };
 
-Hp12c_display.prototype.displayNumber_now_integer = function (x)
+H.format_matrix = function (n, r, c)
 {
-	this.p_display_integer(x, -100);
-};
-
-Hp12c_display.prototype.displayMatrix = function (n, r, c)
-{
-	var self = this;
-
-	self.cancel_blinked();
-
 	var s = " " + (10 + n - 20).toString(16).toUpperCase() +
 		" " + r + ", " + c;
-	self.show(s);
-	self.show_alt("");
+	return s;
 };
 
-Hp12c_display.prototype.displayNumber_now = function (x)
+H.format_typed_number = function (ms, m, dec, exp, exps, xmode, co, notation, decs)
 {
-	if (H.type === "16c" && H.machine.notation >= H.NOTATION_INT) {
-		this.displayNumber_now_integer(x);
-		return;
+	if (m.length === 0) {
+		// nothing typed, or BSP'ed to none
+		return H.format_result(0, decs, notation, co);
 	}
-
-	var co = H.machine.comma;
-	x = x.r || 0;
-
-	if (x > H.value_max) {
-		x = H.value_max;
-	} else if (x < -H.value_max) {
-		x = -H.value_max;
-	} else if (Math.abs(x) < H.value_min) {
-		x = 0;
-	}
-
-	// display result
-	var sres = this.format_result(x);
-	this.show(sres);
-	this.show_alt("");
-};
-
-Hp12c_display.prototype.cancel_blinked = function ()
-{
-	var self = this;
-
-	if (self.blink_handle !== null) {
-		H.machine.sti("display");
-		H.cancel_delay(self.blink_handle);
-		self.blink_handle = null;
-	}
-};
-
-
-Hp12c_display.prototype.start_blinked = function (x)
-{
-	var self = this;
-
-	H.machine.cli("display");
-	self.show("");
-
-	self.cancel_blinked(); // innocuous if no blink in progress
-
-	self.blink_handle = H.delay(function () {
-		self.blink_handle = null;
-		H.machine.sti("display");
-		self.displayNumber_now(x);
-	}, self.blink_delay);
-};
-
-Hp12c_display.prototype.displayNumber = function (x)
-{
-	var self = this;
-
-	self.start_blinked(x);
-};
-
-Hp12c_display.prototype.displayTypedNumber_integer = function (val, xmode, digits)
-{
-	var self = this;
-
-	self.cancel_blinked();
-	this.p_display_integer(val, xmode, digits);
-};
-
-Hp12c_display.prototype.displayTypedNumber = function (ms, m, dec, exp, exps, xmode)
-{
-	var self = this;
-
-	self.cancel_blinked();
 
 	var s = "";
-	var co = H.machine.comma;
 
 	if (xmode === 0) {
 		s = " 0";
 		if (m.length > 0) {
 			s = (ms < 0 ? "-" : " ") + m;
 		}
-		if (H.type !== "11c" && H.type !== "15c") {
+		if (H.type !== "11c" && H.type !== "15c" && H.type !== "10c") {
 			s += ".";
 		}
 		s = H.i18n(s, co, 0);
@@ -1325,208 +1230,489 @@ Hp12c_display.prototype.displayTypedNumber = function (ms, m, dec, exp, exps, xm
 		s += exps < 0 ? "-" : " ";
 		s += H.zeropad(parseInt("0" + exp, 10).toFixed(0), 2);
 	}
-	this.show(s);
-	this.show_alt("");
+
+	return s;
 };
 
-H.mod_stt = null;
-
-Hp12c_display.prototype.modifier_table = function ()
+H.get_radix = function (notation)
 {
-	if (H.mod_stt) {
-		return H.mod_stt;
-	}
+	var radix = H.radix[notation];
+	var suffix = H.radix_suffix[notation];
 
-	var a = [];
-
-	a[0] = "";
-	a[H.FF] = "f";
-	a[H.GG] = "g";
-	a[H.STO] = "STO";
-	a[H.STO2] = "STO★";
-	a[H.RCL] = "RCL";
-	a[H.RCL2] = "RCL★";
-	
-	if (H.type !== "16c") {
-		a[H.STO_PLUS] = "STO+";
-		a[H.STO_MINUS] = "STO-";
-		a[H.STO_TIMES] = "STO×";
-		a[H.STO_DIVIDE] = "STO÷";
-	}
-
-	a[H.GTO] = "GTO";
-	a[H.GTO_MOVE] = "GTO★";
-
-	if (H.is_12c()) {
-		a[H.RCL_GG] = "RCL g";
-	}
-
-	if (H.type === "11c" || H.type === "15c") {
-		a[H.HYP] = "HYP";
-		a[H.HYPINV] = "HYP-1";
-		a[H.LBL] = "LBL";
-		a[H.GSB] = "GSB";
-		a[H.FIX] = "FIX";
-		a[H.SCI] = "SCI";
-		a[H.ENG] = "ENG";
-		a[H.STO_FF] = "STO f";
-		a[H.RCL_FF] = "RCL f";
-		a[H.RCL_GG] = "RCL g";
-		a[H.GG_SF] = "SF";
-		a[H.GG_CF] = "CF";
-		a[H.GG_FQUESTION] = "F?";
-
-		a[H.STO_PLUS_FF] = "STO+ f";
-		a[H.STO_MINUS_FF] = "STO- f";
-		a[H.STO_TIMES_FF] = "STO× f";
-		a[H.STO_DIVIDE_FF] = "STO÷ f";
-	}
-
-	if (H.type === "15c") {
-		a[H.GTO_DOT] = "GTO★";
-		a[H.GSB_DOT] = "GSB★";
-		a[H.LBL_DOT] = "LBL★";
-
-		a[H.STO_PLUS_DOT] = "STO+★";
-		a[H.STO_MINUS_DOT] = "STO-★";
-		a[H.STO_TIMES_DOT] = "STO×★";
-		a[H.STO_DIVIDE_DOT] = "STO÷★";
-
-		a[H.RCL_PLUS] = "RCL+";
-		a[H.RCL_MINUS] = "RCL-";
-		a[H.RCL_TIMES] = "RCL×";
-		a[H.RCL_DIVIDE] = "RCL÷";
-
-		a[H.RCL_PLUS_DOT] = "RCL+★";
-		a[H.RCL_MINUS_DOT] = "RCL-★";
-		a[H.RCL_TIMES_DOT] = "RCL×★";
-		a[H.RCL_DIVIDE_DOT] = "RCL÷★";
-
-		a[H.RCL_PLUS_FF] = "STO+ f";
-		a[H.RCL_MINUS_FF] = "STO- f";
-		a[H.RCL_TIMES_FF] = "STO× f";
-		a[H.RCL_DIVIDE_FF] = "STO÷ f";
-
-		a[H.FF_EXCHANGE] = "X⇄";
-		a[H.FF_EXCHANGE_DOT] = "X⇄★";
-
-		a[H.SOLVE] = "SOLV";
-		a[H.SOLVE_DOT] = "SOLV★";
-		a[H.INTEG] = "INTG";
-		a[H.INTEG_DOT] = "INTG★";
-		a[H.GG_TEST] = "TEST";
-
-		a[H.DIM] = "DIM";
-		a[H.RCL_DIM] = "RCL D";
-		a[H.MATRIX] = "M";
-		a[H.STO_GG] = "STO g";
-		a[H.STO_MATRIX] = "STO M";
-		a[H.STO_FF_MATRIX] = "STO M";
-		a[H.RCL_MATRIX] = "RCL M";
-		a[H.RCL_FF_MATRIX] = "RCL M";
-		a[H.RESULT] = "Res";
-
-		a[H.ISG] = "ISG";
-		a[H.ISG_DOT] = "ISG★";
-		a[H.DSE] = "DSE";
-		a[H.DSE_DOT] = "DSE★";
-	}
-
-	if (H.type === "16c") {
-		a[H.LBL] = "LBL";
-		a[H.GSB] = "GSB";
-		a[H.GG_SF] = "SF";
-		a[H.GG_CF] = "CF";
-		a[H.GG_FQUESTION] = "F?";
-		a[H.STO_FF] = "STO f";
-		a[H.RCL_FF] = "RCL f";
-		a[H.WINDOW] = "WINDOW";
-		a[H.FLOAT] = "FLOAT";
-	}
-
-	H.mod_stt = a;
-	return H.mod_stt;
+	return [radix, suffix];
 };
+
+H.format_integer_to_string = function (t, radix, pnegative_repr, wordsize)
+{
+	// for non-decimal, how as unsigned
+	var negative_repr = 0;
+	if (radix === 10) {
+		negative_repr = pnegative_repr;
+	}
+
+	var spure = H.integer_to_string(t,
+					negative_repr,
+					wordsize,
+					radix,
+					true);
+
+	return spure;
+};
+
+/* HP-12C emulator 
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
+ * All rights reserved.
+ */
+
+/*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, sub: true */
+/*jshint globalstrict: true*/
+/*global H */
+
+"use strict";
+
+function Hp12c_display()
+{
+	var self = this;
+
+	self.lcd = [];
+
+	// contents that "should be" on screen. Closure or list of strings
+	self.contents_logical = ["", ""];
+
+	// contents that are actually on screen e.g. could be "" when flickering
+	self.contents_physical = "replaceme";
+	self.contents_alt_physical = "replaceme";
+
+	// contents that "should be" and are actually in modifier
+	self.contents_modifier_logical = "";
+	self.contents_modifier_physical = "replaceme";
+
+	// LCD fast 'flicker' when a key is pressed
+	self.flicker_delay = 25;
+	self.flicker_timer = null;
+
+	// LCD continuous blink when overflow
+	self.overflow_blink = false;
+	self.overflow_blink_timer = null;
+	self.overflow_blink_freq = 250; // ms
+
+
+	var LCD_A = 1;
+	var LCD_B = 2;
+	var LCD_C = 4;
+	var LCD_D = 8;
+	var LCD_E = 16;
+	var LCD_F = 32;
+	var LCD_G = 64;
+	var LCD_P = 128;
+	var LCD_T = 256;
+
+	self.lcdmap = [];
+
+	self.lcdmap['0'] = LCD_A | LCD_B | LCD_C | LCD_E | LCD_F | LCD_G;
+	self.lcdmap['1'] = LCD_C | LCD_F;
+	self.lcdmap['2'] = LCD_A | LCD_C | LCD_D | LCD_E | LCD_G;
+	self.lcdmap['3'] = LCD_A | LCD_C | LCD_D | LCD_F | LCD_G;
+	self.lcdmap['4'] = LCD_B | LCD_C | LCD_D | LCD_F;
+	self.lcdmap['5'] = LCD_A | LCD_B | LCD_D | LCD_F | LCD_G;
+	self.lcdmap['6'] = LCD_A | LCD_B | LCD_D | LCD_E | LCD_F | LCD_G;
+	self.lcdmap['7'] = LCD_A | LCD_C | LCD_F;
+	self.lcdmap['8'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_E | LCD_F | LCD_G;
+	self.lcdmap['9'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_F | LCD_G;
+	self.lcdmap[' '] = 0;
+	self.lcdmap['.'] = LCD_P;
+	self.lcdmap[','] = LCD_P | LCD_T;
+	self.lcdmap['r'] = LCD_A | LCD_B;
+	self.lcdmap['U'] = LCD_B | LCD_C | LCD_E | LCD_F | LCD_G;
+	self.lcdmap['u'] = LCD_B | LCD_C | LCD_D;
+	self.lcdmap['n'] = LCD_B | LCD_C | LCD_A;
+	self.lcdmap['i'] = LCD_B;
+	self.lcdmap['g'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_F | LCD_G;
+	self.lcdmap['-'] = LCD_D;
+	self.lcdmap['A'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_E | LCD_F;
+	self.lcdmap['a'] = self.lcdmap['A'];
+	self.lcdmap['B'] = LCD_B | LCD_D | LCD_E | LCD_F | LCD_G;
+	self.lcdmap['b'] = self.lcdmap['B'];
+	self.lcdmap['c'] = LCD_D | LCD_E | LCD_G;
+	self.lcdmap['C'] = self.lcdmap['c'];
+	self.lcdmap['d'] = LCD_C | LCD_D | LCD_E | LCD_F | LCD_G;
+	self.lcdmap['D'] = self.lcdmap['d'];
+	self.lcdmap['E'] = LCD_A | LCD_B | LCD_D | LCD_E | LCD_G;
+	self.lcdmap['e'] = self.lcdmap['E'];
+	self.lcdmap['F'] = LCD_A | LCD_B | LCD_D | LCD_E;
+	self.lcdmap['f'] = self.lcdmap['F'];
+	self.lcdmap['H'] = LCD_B | LCD_C | LCD_D | LCD_E | LCD_F;
+	self.lcdmap['h'] = LCD_B |         LCD_D | LCD_E | LCD_F;
+	self.lcdmap['o'] = LCD_D | LCD_E | LCD_F | LCD_G;
+	self.lcdmap['O'] = self.lcdmap["o"];
+	self.lcdmap['R'] = LCD_D | LCD_E;
+	self.lcdmap['P'] = LCD_A | LCD_B | LCD_C | LCD_D | LCD_E;
+	self.lcdmap[':'] = LCD_P;
+
+	for (var e = 0; e <= 10; ++e) {
+		self.lcd[e] = [];
+		self.lcd[e][0] = 0;
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "a");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "b");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "c");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "d");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "e");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "f");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "g");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "p");
+		self.lcd[e][self.lcd[e].length] = H.getElem("lcd" + e + "t");
+	}
+	
+	self.display = H.getElem("display");
+	self.dbegin = H.getElem("begin");
+	self.ddmyc = H.getElem("dmyc");
+	self.dmodifier = H.getElem("modifier");
+	self.pgrm = H.getElem("pgrm");
+	self.rpnalg = H.getElem("rpnalg");
+	self.trigo = H.getElem("trigo");
+	self.user = H.getElem("user");
+	self.carry = H.getElem("carry");
+	self.overflow = H.getElem("overflow");
+	self.complex = H.getElem("complex");
+	self.altdisplay = H.getElem("altdisplay");
+	self.wordstatus = H.getElem("wordstatus");
+	self.undo = H.getElem("undo");
+	self.parentheses = H.getElem("parentheses");
+
+	self.clear();
+}
+
+Hp12c_display.prototype.private_show = function (dummy)
+{
+	// This method only exists because the mobile versions
+	// override it to detect changes in display, and schedule
+	// memory saving.
+};
+
+// converts contents to LCD segments
+Hp12c_display.prototype.physical_lcd_display = function (contents)
+{
+	var self = this;
+	var txt = contents[0];
+	var alttxt = contents[1];
+
+	self.show_alt(alttxt);
+
+	if (self.contents_physical === txt) {
+		return;
+	}
+
+	// no-op, but mobile versions override method and
+	// might look the argument
+	self.private_show(txt);
+
+	self.contents_physical = txt;
+
+	window.console.ut_snap("lcd  ");
+
+	var f = -1;
+	var buffer = [];
+
+	for (var e = 0; e < txt.length && f < self.lcd.length; ++e) {
+		var merge = false;
+		var val = txt.charAt(e);
+		++f;
+		if ((val == '.' || val == ',') && f > 0) {
+			// merge decimal point/thousand separator
+			--f;
+			merge = true;
+		}
+		if (! self.lcdmap[val]) {
+			val = ' ';
+		}
+		var map = self.lcdmap[val];
+		buffer[f] = map | (merge ? buffer[f] : 0);
+	}
+	for (++f; f < self.lcd.length; ++f) {
+		buffer[f] = 0;
+	}
+
+	if (H.embedded) {
+		self.display.showDisplay(buffer);
+		return;
+	}
+
+	for (f = 0; f < buffer.length && f < self.lcd.length; ++f) {
+		var map2 = buffer[f];
+		for (var segm = 1; segm < 10; ++segm) {
+			var bit = 1 << (segm - 1);
+			var visibility = (map2 & bit) ? "visible" : "hidden";
+			if (self.lcd[f][segm].style.visibility !== visibility) {
+				self.lcd[f][segm].style.visibility = visibility;
+			}
+		}
+	}
+};
+
+Hp12c_display.prototype.set_blink = function (blinks)
+{
+	var self = this;
+
+	self.overflow_blink = blinks;
+	self.recycle();
+};
+
+Hp12c_display.prototype.clear = function ()
+{
+	var self = this;
+
+	self.new_content(["", ""], false);
+	self.show_wordstatus("");
+};
+
+Hp12c_display.prototype.displayMatrix = function (n, r, c)
+{
+	var self = this;
+
+	self.new_content(function () {
+		return [H.format_matrix(n, r, c), ""];
+	}, true);
+};
+
+Hp12c_display.prototype.p_display_integer = function (x, xmode, typed_digits, flicker)
+{
+	var self = this;
+
+	var altdisplay = H.machine.altdisplay;
+	var notation = H.machine.notation;
+	var wordsize = H.machine.wordsize;
+	var window_count = H.machine.window_count();
+	var intwindow = H.machine.intwindow;
+	var zeros_flag = H.machine.get_zeros_flag();
+	var co = H.machine.comma;
+	var negative_repr = H.machine.negative_repr;
+
+	var f = function () {
+		var res = H.format_integer(x, xmode, typed_digits, altdisplay, notation, wordsize,
+                                window_count, intwindow, zeros_flag, co, negative_repr);
+		var s = res[0];
+		var sfull = res[1];
+		var show_apocryphal = res[2];
+
+		return [s, (show_apocryphal ? H.html_wrap(sfull) : "")];
+	};
+
+	self.new_content(f, flicker);
+};
+
+Hp12c_display.prototype.displayNumber = function (x)
+{
+	var self = this;
+
+	if (H.type === "16c" && H.machine.notation >= H.NOTATION_INT) {
+		self.p_display_integer(x, -100, null, true);
+		return;
+	}
+
+	var decs = H.machine.decimals;
+	var notation = H.machine.notation;
+	var co = H.machine.comma;
+
+	var f = function () {
+		var sres = H.format_result_armored(x, decs, notation, co);
+		return [sres, ""];
+	};
+
+	self.new_content(f, true);
+};
+
+Hp12c_display.prototype.displayTypedNumber_integer = function (val, xmode, digits)
+{
+	var self = this;
+	self.p_display_integer(val, xmode, digits, false);
+};
+
+Hp12c_display.prototype.displayTypedNumber = function (ms, m, dec, exp, exps, xmode, notation)
+{
+	var self = this;
+	var co = H.machine.comma;
+	var decs = H.machine.decimals;
+
+	var f = function () {
+		var s = H.format_typed_number(ms, m, dec, exp, exps, xmode, co, notation, decs);
+		return [s, ""];
+	};
+	self.new_content(f, false); // no flicker
+};
+
+// Show free/unknown contents
+Hp12c_display.prototype.show_nopgrm = function (txt)
+{
+	var self = this;
+
+	self.new_content([txt, ""], false);
+};
+
+
+// Show "running"
+Hp12c_display.prototype.show_running = function ()
+{
+	var self = this;
+	self.new_content(["running", ""], false);
+};
+
+// Show date
+Hp12c_display.prototype.show_date = function (txt)
+{
+	var self = this;
+	self.new_content([txt, ""], true);
+};
+
+// ################## Blink / flicker state machine implementation
+
+// LCD contents have changed
+Hp12c_display.prototype.new_content = function (content, to_flicker)
+{
+	var self = this;
+
+	var will_flicker = false;
+
+	if (content !== null) {
+		self.contents_logical = content;
+		// flicker uses H.machine.cli()/sti()
+		will_flicker = to_flicker && (!!H.machine);
+		window.console.ut_snap("new  ");
+	} else {
+		window.console.ut_snap("recy ");
+	}
+
+	if (self.overflow_blink_timer) {
+		H.cancel_periodic(self.overflow_blink_timer);
+		self.overflow_blink_timer = null;
+	}
+	if (self.flicker_timer) {
+		H.machine.sti("flicker abrt");
+		H.cancel_delay(self.flicker_timer);
+		self.flicker_timer = null;
+	}
+
+	if (H.machine) {
+		var modal = H.machine.modal();
+
+		if (modal === H.MODAL_ERROR) {
+			will_flicker = false;
+			// override display contents
+			self.contents_logical = ["ERROR " + H.machine.error(), ""];
+		} else if (modal === H.MODAL_PAUSE) {
+			will_flicker = false;
+			self.show_modifier_physical("PAUSE");
+		} else if (modal === H.MODAL_PRESS) {
+			will_flicker = false;
+			self.show_modifier_physical("Press");
+		} else if (modal === H.MODAL_MISC) {
+			will_flicker = false;
+		} else if (H.machine.program_mode === H.RUNNING_STEP_PRE) {
+			will_flicker = false;
+			self.show_modifier_physical("Press");
+		} else {
+			// refresh modifier, in case last mode was modal
+			self.show_modifier_physical(self.contents_modifier_logical);
+
+			if (H.machine.program_mode === H.RUNNING || H.machine.running_context.length > 0) {
+				if (H.machine.rapid) {
+					// Show "running" but preserve the logical display content
+					self.physical_lcd_display(["running", ""]);
+					// elide display update when in rapid mode
+					return;
+				}
+				will_flicker = false;
+			}
+		}
+	}
+
+	var f = function () {
+		if (self.overflow_blink) {
+			self.overflow_blink_on = true;
+			self.overflow_blink_timer =
+				H.periodic(function () {
+					self.overflow_blink_on = ! self.overflow_blink_on;
+					if (self.overflow_blink_on) {
+						window.console.ut_snap("blink");
+						self.physical_lcd_display(self.r_contents_logical());
+					} else {
+						window.console.ut_snap("blonk");
+						self.physical_lcd_display(["", ""]);
+					}
+				},
+				self.overflow_blink_freq);
+		} 
+
+		self.physical_lcd_display(self.r_contents_logical());
+	};
+
+	if (will_flicker) {
+		// flicker: clear display for a short while
+		self.physical_lcd_display(["", ""]);
+
+		// block keyboard
+		H.machine.cli("flicker");
+	
+		// schedule redisplay (f() block contains overflow blink logic)
+		self.flicker_timer = H.delay(function () {
+				self.flicker_timer = null;
+				H.machine.sti("flicker");
+				f();
+		}, self.flicker_delay);
+	} else {
+		f();
+	}
+};
+
+Hp12c_display.prototype.recycle = function () {
+	var self = this;
+	self.new_content(null);
+};
+
+Hp12c_display.prototype.r_contents_logical = function ()
+{
+	var self = this;
+
+	if (typeof self.contents_logical === "function") {
+		// resolve lazy evaluation
+		self.contents_logical = self.contents_logical();
+	}
+	
+	return self.contents_logical;
+};
+
+// ############################################ Modifier
 
 Hp12c_display.prototype.show_modifier = function (m)
 {
-	var txt = this.modifier_table()[m];
+	var self = this;
+
+	var txt = H.modifier_table()[m];
 	if (txt === undefined || txt === null) {
 		H.error("Display: unknown modifier " + m);
 		txt = "";
 	}
+	self.contents_modifier_logical = txt;
 
-	this.setInnerHTML("dmodifier", txt);
+	// do not change modifier in modal state (PAUSE or Press are painted there)
+	// or when running in rapid mode (to save processing time)
+
+	var modal = H.machine.modal() > 0 || H.machine.program_mode === H.RUNNING_STEP_PRE;
+	var running_rapid = H.machine.rapid &&
+		(H.machine.program_mode === H.RUNNING || H.machine.running_context.length > 0);
+
+	if (modal || running_rapid) {
+		return;
+	}
+
+	self.show_modifier_physical(txt);
 };
 
-Hp12c_display.prototype.show_begin = function (is_begin)
-{
-	var txt = "";
-	if (is_begin) {
-		txt = "BEGIN";
-	}
-
-	this.setInnerHTML("dbegin", txt);
-};
-
-Hp12c_display.prototype.show_carry = function (is_carry)
-{
-	var txt = "";
-	if (is_carry) {
-		txt = "C";
-	}
-
-	if (H.type === "16c") {
-		this.setInnerHTML("carry", txt);
-	}
-};
-
-Hp12c_display.prototype.show_overflow = function (is_overflow)
-{
-	var txt = "";
-	if (is_overflow) {
-		txt = "G";
-	}
-
-	if (H.type === "16c") {
-		this.setInnerHTML("overflow", txt);
-	}
-};
-
-Hp12c_display.prototype.show_complex = function (is_complex)
-{
-	var txt = "";
-	if (is_complex) {
-		txt = "C";
-	}
-
-	if (H.type === "15c") {
-		this.setInnerHTML("complex", txt);
-	}
-};
-
-Hp12c_display.prototype.show_error = function (err)
-{
-	this.show("ERROR " + err);
-	this.show_alt("");
-};
-
-Hp12c_display.prototype.display_meminfo = function (mem, stolen)
-{
-	--stolen;
-	var stolen_txt = stolen.toFixed(0);
-	if (H.type !== "16c") {
-		stolen_txt = (stolen % 10).toFixed(0);
-		if (stolen >= 10) {
-			stolen_txt = ":" + stolen_txt;
-		}
-	}
-	this.show("P-" + H.zeropad(mem, H.ram_ADDR_SIZE) + " R-" + stolen_txt);
-	this.show_alt("");
-};
+// ################## Annunciators and other 'simple' elements
 
 Hp12c_display.prototype.show_dmyc = function (dmy, compoundf)
 {
+	var self = this;
+
 	var txt = "";
 	if (dmy) {
 		txt += "D.MY";
@@ -1535,16 +1721,24 @@ Hp12c_display.prototype.show_dmyc = function (dmy, compoundf)
 		txt += "&nbsp;&nbsp;C";
 	}
 
-	this.setInnerHTML("ddmyc", txt);
+	self.setInnerHTML("ddmyc", txt);
 };
 
-Hp12c_display.prototype.show_pse = function ()
+Hp12c_display.prototype.show_modifier_physical = function (txt)
 {
-	this.setInnerHTML("dmodifier", "PAUSE");
+	var self = this;
+
+	if (txt !== self.contents_modifier_physical) {
+		self.contents_modifier_physical = txt;
+		self.setInnerHTML("dmodifier", self.contents_modifier_physical);
+		window.console.ut_snap("mod  ");
+	}
 };
 
 Hp12c_display.prototype.show_pgrm = function (pgrm, run, pc)
 {
+	var self = this;
+
 	var txt = "";
 	if (pgrm) {
 		txt = "PRGM";
@@ -1552,38 +1746,148 @@ Hp12c_display.prototype.show_pgrm = function (pgrm, run, pc)
 		txt = "RUN " + H.zeropad(pc.toFixed(0), 2);
 	}
 
-	this.setInnerHTML("pgrm", txt);
+	self.setInnerHTML("pgrm", txt);
 };
 
 Hp12c_display.prototype.show_algmode = function (algmode)
 {
+	var self = this;
+
 	if (H.type === "12c-platinum") {
 		var txt = ["RPN", "ALG"][algmode];
-		this.setInnerHTML("rpnalg", txt);
+		self.setInnerHTML("rpnalg", txt);
 	}
 };
 
 Hp12c_display.prototype.show_trigo = function (trigo)
 {
-	if (H.type === "11c" || H.type === "15c") {
+	var self = this;
+
+	if (H.type === "11c" || H.type === "15c" || H.type === "10c") {
 		var txt = ["", "RAD", "GRAD"][trigo];
-		this.setInnerHTML("trigo", txt);
+		self.setInnerHTML("trigo", txt);
 	}
 };
 
 Hp12c_display.prototype.show_user = function (user)
 {
+	var self = this;
+
 	if (H.type === "11c" || H.type === "15c") {
 		var txt = ["", "USER"][user];
-		this.setInnerHTML("user", txt);
+		self.setInnerHTML("user", txt);
 	}
 };
+
+Hp12c_display.prototype.setInnerHTML = function (name, txt)
+{
+	var self = this;
+
+	if (H.embedded) {
+		self.display.setInnerHTML(name, txt);
+	} else {
+		var tgt = this[name];
+		if (tgt) {
+			tgt.innerHTML = txt;
+		}
+	}
+};
+
+Hp12c_display.prototype.show_carry = function (is_carry)
+{
+	var self = this;
+
+	var txt = "";
+	if (is_carry) {
+		txt = "C";
+	}
+
+	if (H.type === "16c") {
+		self.setInnerHTML("carry", txt);
+	}
+};
+
+Hp12c_display.prototype.show_overflow = function (is_overflow)
+{
+	var self = this;
+
+	var txt = "";
+	if (is_overflow) {
+		txt = "G";
+	}
+
+	if (H.type === "16c") {
+		self.setInnerHTML("overflow", txt);
+	}
+};
+
+Hp12c_display.prototype.show_begin = function (is_begin)
+{
+	var self = this;
+
+	var txt = "";
+	if (is_begin) {
+		txt = "BEGIN";
+	}
+
+	self.setInnerHTML("dbegin", txt);
+};
+
+Hp12c_display.prototype.show_alt = function (txt)
+{
+	var self = this;
+
+	if (self.contents_alt_physical === txt) {
+		return;
+	}
+
+	self.contents_alt_physical = txt;
+	self.setInnerHTML("altdisplay", txt);
+	window.console.ut_snap("alth ");
+};
+
+Hp12c_display.prototype.show_wordstatus = function (txt)
+{
+	var self = this;
+
+	self.setInnerHTML("wordstatus", txt);
+};
+
+Hp12c_display.prototype.show_parentheses = function (txt)
+{
+	var self = this;
+
+	self.setInnerHTML("parentheses", txt);
+};
+
+Hp12c_display.prototype.show_undo = function (enabled)
+{
+	var self = this;
+
+	self.setInnerHTML("undo", enabled ? "u" : "");
+};
+
+Hp12c_display.prototype.show_complex = function (is_complex)
+{
+	var self = this;
+
+	var txt = "";
+	if (is_complex) {
+		txt = "C";
+	}
+
+	if (H.type === "15c") {
+		self.setInnerHTML("complex", txt);
+	}
+};
+
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, sub: true, bitwise: true */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
@@ -1593,7 +1897,10 @@ function Hp12c_keyboard()
 	var self = this;
 
 	self.is_enabled = 0;
+	self.buffer = 0;
+
 	self.kbdtable = {};
+
 	self.kbdtable['0'] = 0;
 	self.kbdtable['.'] = 48;
 	self.kbdtable[','] = 48;
@@ -1675,21 +1982,98 @@ function Hp12c_keyboard()
 	self.vertical_map[64] = 49;
 	self.vertical_map[65] = 40;
 
+	self.kbdcoord = {};
+	self.kbdcoord[11] = 0;
+	self.kbdcoord[12] = 1;
+	self.kbdcoord[13] = 2;
+	self.kbdcoord[14] = 3;
+	self.kbdcoord[15] = 4;
+
+	self.kbdcoord[16] = 5;
+	self.kbdcoord[7] = 6;
+	self.kbdcoord[8] = 7;
+	self.kbdcoord[9] = 8;
+	self.kbdcoord[10] = 9;
+
+	self.kbdcoord[21] = 10;
+	self.kbdcoord[22] = 11;
+	self.kbdcoord[23] = 12;
+	self.kbdcoord[24] = 13;
+	self.kbdcoord[25] = 14;
+
+	self.kbdcoord[26] = 15;
+	self.kbdcoord[4] = 16;
+	self.kbdcoord[5] = 17;
+	self.kbdcoord[6] = 18;
+	self.kbdcoord[20] = 19;
+
+	self.kbdcoord[31] = 20;
+	self.kbdcoord[32] = 21;
+	self.kbdcoord[33] = 22;
+	self.kbdcoord[34] = 23;
+	self.kbdcoord[35] = 24;
+
+	self.kbdcoord[36] = 25;
+	self.kbdcoord[1] = 26;
+	self.kbdcoord[2] = 27;
+	self.kbdcoord[3] = 28;
+	self.kbdcoord[30] = 29;
+
+	self.kbdcoord[41] = 30;
+	self.kbdcoord[42] = 31;
+	self.kbdcoord[43] = 32;
+	self.kbdcoord[44] = 33;
+	self.kbdcoord[45] = 34;
+
+	// ENTER is 36
+	self.kbdcoord[0] = 36;
+	self.kbdcoord[48] = 37;
+	self.kbdcoord[49] = 38;
+	self.kbdcoord[40] = 39;
+
 	H.hp1xc_vertical_keyboard_flavor(self.vertical_map);
 
+	self.kbdcoordv = {};
+	for (var opcode in self.kbdcoord) {
+		if (self.kbdcoord.hasOwnProperty(opcode)) {
+			// do reverse translation on vertical_map[coord] -> opcode
+			// (given opcode, find key)
+			for (var vcoord in self.vertical_map) {
+				if (self.vertical_map.hasOwnProperty(vcoord)) {
+					var vopcode = self.vertical_map[vcoord];
+					if (opcode == vopcode) {
+						self.kbdcoordv[opcode] = vcoord;
+					}
+				}
+			}
+		}
+	}
+
 	self.pointer_div = H.getElem("pointer_div");
+	self.cross = H.getElem("cross");
+	self.css3 = self.has_css3(self.pointer_div);
+	self.overlays = [];
+	self.overlays_timer = null;
 
 	// recalculate keyboard coordinates
 	// based on original ones for 700x438 image
-	if (H.embedded) {
-		self.kx = 1;
-		self.ky = 1;
-	} else {
-		self.kx = parseInt(self.pointer_div.style.width, 10) / H.disp_theo_width;
-		self.ky = parseInt(self.pointer_div.style.height, 10) / H.disp_theo_height;
+	if (! H.embedded) {
+		self.pointer_div_width = parseInt(self.pointer_div.style.width, 10);
+		self.pointer_div_height = parseInt(self.pointer_div.style.height, 10);
+		self.kx = self.pointer_div_width / H.disp_theo_width;
+		self.ky = self.pointer_div_height / H.disp_theo_height;
+		self.highlight_radius = "" + Math.floor(5 / 600 * self.pointer_div_width) + "px";
 	}
 
 	self.microsoft = (window.navigator && window.navigator.msPointerEnabled && true);
+	H.touch_display = H.touch_display || self.microsoft;
+
+	if (! H.touch_display) {
+		// Web version running in mobile fare better with touch events
+		if (self.cross['ontouchstart'] !== undefined) {
+			H.touch_display = true;
+		}
+	}
 	
 	var o = this;
 
@@ -1700,16 +2084,16 @@ function Hp12c_keyboard()
 			};
 			window.cross.addEventListener("MSPointerDown", handler, true);
 		} else {
-			H.getElem("cross").ontouchstart = function (x) {
+			self.cross.ontouchstart = function (x) {
 				o.mouse_click(x);
 			};
 		}
 	} else {	
-		H.getElem("cross").onclick = function (x) {
+		self.cross.onclick = function (x) {
 			o.mouse_click(x);
 		};
 	}
-	document.onkeypress = function (x) {
+	self.pointer_div.onkeypress = function (x) {
 		o.hard_keyboard(x);
 	};
 }
@@ -1719,7 +2103,15 @@ Hp12c_keyboard.prototype.enable = function ()
 	var self = this;
 
 	self.is_enabled = 1;
-	// console.log("kbd enabled ");
+	// window.xlog("kbd enabled ");
+
+	if (self.buffer) {
+		var key = self.buffer;
+		self.buffer = 0;
+		H.defer(function () {
+			self.do_dispatch_key(key);
+		});
+	}
 };
 
 Hp12c_keyboard.prototype.disable = function ()
@@ -1727,7 +2119,7 @@ Hp12c_keyboard.prototype.disable = function ()
 	var self = this;
 
 	self.is_enabled = 0;
-	// console.log("kbd disabled ");
+	// window.xlog("kbd disabled ");
 };
 
 Hp12c_keyboard.prototype.enabled = function ()
@@ -1779,9 +2171,31 @@ Hp12c_keyboard.prototype.remap_key = function (raw)
 	return hpkey;
 };
 
+Hp12c_keyboard.prototype.dispatch_key = function (key, force)
+{
+	var self = this;
+
+	if (! force && ! self.enabled()) {
+		self.buffer = key;
+		return;
+	}
+
+	self.do_dispatch_key(key);
+};
+
+Hp12c_keyboard.prototype.do_dispatch_key = function (key)
+{
+	var self = this;
+
+	self.buffer = 0;
+	H.dispatcher.dispatch(key);
+};
+
 Hp12c_keyboard.prototype.hard_keyboard = function (e)
 {
 	var self = this;
+
+	self.transform_coords();
 
 	var keynum;
 	var keychar;
@@ -1801,9 +2215,12 @@ Hp12c_keyboard.prototype.hard_keyboard = function (e)
 	var ret = true;
 	var kk = self.kbdtable[keychar];
 	if (kk !== undefined && kk !== null) {
-		if (self.enabled()) {
-			H.dispatcher.dispatch(self.kbdtable[keychar]);
+		var kco = H.vertical_layout ? self.kbdcoordv[kk] : self.kbdcoord[kk];
+		if (kco !== undefined && kco !== null) {
+			self.highlight(kco);
 		}
+		self.dispatch_key(kk, false);
+
 		e.returnValue = false;
 		if (e.preventDefault) {
 			e.preventDefault();
@@ -1813,12 +2230,20 @@ Hp12c_keyboard.prototype.hard_keyboard = function (e)
 	return ret;
 };
 
-Hp12c_keyboard.prototype.mouse_click = function (evt)
+Hp12c_keyboard.prototype.transform_coords = function ()
 {
 	var self = this;
 
-	if (! evt) {
-		evt = window.event;
+	// recalculate keyboard coordinates
+	// based on original ones for 700x438 image
+	// This needs to be recalculated here because coords can be
+	// changed by Android at any time
+	if (H.embedded) {
+		self.kx = 1;
+		self.ky = 1;
+		self.pointer_div_width = H.disp_theo_width;
+		self.pointer_div_height = H.disp_theo_height;
+		self.highlight_radius = Math.floor(5 / 600 * H.disp_theo_width);
 	}
 
 	self.xoff = H.disp_key_offset_x * self.kx;
@@ -1830,26 +2255,72 @@ Hp12c_keyboard.prototype.mouse_click = function (evt)
 	self.xd = H.disp_key_dist_x * self.kx;
 	self.yd = H.disp_key_dist_y * self.ky;
 
+	if (H.disp_fb_offset_x !== undefined) {
+		self.xoff_fb = H.disp_fb_offset_x * self.kx;
+		self.yoff_fb = H.disp_fb_offset_y * self.ky;
+
+		self.xl_fb = H.disp_fb_width * self.kx;
+		self.yl_fb = H.disp_fb_height * self.ky;
+	}
+};
+
+Hp12c_keyboard.prototype.mouse_click = function (evt)
+{
+	var self = this;
+
+	if (! evt) {
+		evt = window.event;
+	}
+
+	self.transform_coords();
+
 	var pos_x, pos_y;
 
 	if (H.embedded) {
-		pos_x =	evt.X - self.xoff;
-		pos_y = evt.Y - self.yoff;
+		pos_x =	evt.X;
+		pos_y = evt.Y;
 	} else if (H.touch_display) {
-		evt.preventDefault();
-		if (self.microsoft) {
-			pos_x =	(evt.pageX - self.pointer_div.offsetLeft) - self.xoff;
-			pos_y = (evt.pageY - self.pointer_div.offsetTop) - self.yoff;
-		} else {
-			pos_x =	(evt.targetTouches[0].pageX - self.pointer_div.offsetLeft) - self.xoff;
-			pos_y = (evt.targetTouches[0].pageY - self.pointer_div.offsetTop) - self.yoff;
+		if (! self.microsoft) {
+			evt.preventDefault();
 		}
+		// Browser chooses a CSS transform based on viewport
+		// and touch events are not automatically translated
+		var css_scale = 1;
+		if (self.pointer_div['getBoundingClientRect'] !== undefined) {
+			css_scale = self.pointer_div.getBoundingClientRect().width / self.pointer_div.offsetWidth;
+		}
+		// transformed rect is based on x=0 but y is vertically centered
+		var css_y = self.pointer_div.offsetHeight * (1 - css_scale) / 2;
+		if (self.microsoft) {
+			pos_x =	evt.pageX - self.pointer_div.offsetLeft;
+			pos_y = evt.pageY - self.pointer_div.offsetTop;
+		} else {
+			pos_x =	evt.targetTouches[0].pageX - self.pointer_div.offsetLeft;
+			pos_y = evt.targetTouches[0].pageY - self.pointer_div.offsetTop;
+		}
+		// xlog("pos x " + pos_x);
+		// xlog("CSS scale: " + css_scale);
+		pos_x /= css_scale;
+		pos_y -= css_y;
+		pos_y /= css_scale;
+		// xlog("pos x' " + pos_x);
 	} else {
 		pos_x = (evt.offsetX ? evt.offsetX : 
-			(evt.pageX - self.pointer_div.offsetLeft)) - self.xoff;
+			(evt.pageX - self.pointer_div.offsetLeft));
 		pos_y = (evt.offsetY ? evt.offsetY :
-			(evt.pageY - self.pointer_div.offsetTop)) - self.yoff;
+			(evt.pageY - self.pointer_div.offsetTop));
 	}
+
+	if (pos_y < self.yoff && pos_y >= 0 && pos_x >= 0 && pos_x <= self.pointer_div_width) {
+		// touched LCD
+		var leftside = pos_x < (self.pointer_div_width / 2);
+		var pseudo_key = leftside ? 200 : 201;
+		self.dispatch_key(pseudo_key, true);
+		return;
+	}
+
+	pos_x -= self.xoff;
+	pos_y -= self.yoff;
 
 	var key;
 	var in_key;
@@ -1871,11 +2342,10 @@ Hp12c_keyboard.prototype.mouse_click = function (evt)
 
 		in_key = (pos_x < self.xl) && ((pos_y < self.yl) || key == 51);
 		if (in_key) {
-			key = self.remap_key_vertical(key);
-			if (key >= 0) {
-				if (self.enabled()) {
-					H.dispatcher.dispatch(key);
-				}
+			var rkey = self.remap_key_vertical(key);
+			if (rkey >= 0) {
+				self.highlight(key);
+				self.dispatch_key(rkey, false);
 			}
 		}
 	} else {
@@ -1895,18 +2365,175 @@ Hp12c_keyboard.prototype.mouse_click = function (evt)
 
 		in_key = (pos_x < self.xl) && ((pos_y < self.yl) || key == 25);
 		if (in_key) {
-			if (self.enabled()) {
-				H.dispatcher.dispatch(self.remap_key(key));
-			}
+			self.highlight(key);
+			self.dispatch_key(self.remap_key(key), false);
 		}
 	}
 };
+
+Hp12c_keyboard.prototype.test = function ()
+{
+	var self = this;
+
+	self.transform_coords();
+
+	if (! self.css3) {
+		return;
+	}
+
+	for (var x = 0; x < (H.vertical_layout ? 6 : 10); ++x) {
+		for (var y = 0; y < (H.vertical_layout ? 7 : 4); ++y) {
+			var xx = self.xoff + x * self.xd;
+			var yy = self.yoff + y * self.yd;
+			var id = "test" + x + y;
+			// DO NOT CHANGE COLOR NAME without fixing Android first
+			self.make_div(xx, yy, self.xl, self.yl, self.pointer_div,
+				id, "red");
+			xx = self.xoff + x * self.xd + self.xoff_fb;
+			yy = self.yoff + y * self.yd + self.yoff_fb;
+			id = "testfb" + x + y;
+			// DO NOT CHANGE COLOR NAME without fixing Android first
+			self.make_div(xx, yy, self.xl_fb, self.yl_fb, self.pointer_div,
+				id, "green");
+		}
+	}
+
+	self.reset_overlays_timer();
+	H.machine.fb = 1;
+	window.xlog("Testing feedback");
+};
+
+Hp12c_keyboard.prototype.highlight = function (key)
+{
+	var self = this;
+
+	if (! H.machine.fb) {
+		return;
+	} else if (! self.css3) {
+		return;
+	}
+
+	self.reset_overlays_timer();
+	self.remove_overlays();
+
+	var is_enter = false;
+	if (H.vertical_layout) {
+		if (key === 61) {
+			key = 51;
+		}
+		is_enter = key === 51;
+	} else {
+		if (key === 35) {
+			key = 25;
+		}
+		is_enter = key === 25;
+	}
+
+	var x = key % 10;
+	var y = Math.floor(key / 10);
+
+	var xx = self.xoff + x * self.xd; // + self.xoff_fb;
+	var yy = self.yoff + y * self.yd; // + self.yoff_fb;
+	var w = self.xl;
+	var h = self.yl;
+	if (is_enter) {
+		h += self.yl;
+		h += self.yd - self.yl;
+	}
+	var id = "fb" + x + y;
+	// DO NOT CHANGE COLOR NAME without fixing Android first
+	self.make_div(xx, yy, w, h, self.pointer_div,
+			id, "green");
+
+	self.overlays_timer = H.delay(function () {
+		self.remove_overlays();
+	}, 350);
+};
+
+Hp12c_keyboard.prototype.has_css3 = function (hook)
+{
+	if (H.embedded) {
+		window.xlog("CSS3 x embedded engine");
+		return true;
+	} else if (H.disp_fb_offset_x === undefined) {
+		window.xlog("No feedback coordinates");
+		return false;
+	} else if (hook.style['zIndex'] === undefined ||
+			hook.style['borderRadius'] === undefined ||
+			hook.style['opacity'] === undefined ||
+			hook.style['pointerEvents'] === undefined) {
+		// we need these CSS2/CSS3 style elements
+		window.xlog("CSS3 property misssing");
+		return false;
+	}
+	window.xlog("CSS3 present");
+	return true;
+};
+
+Hp12c_keyboard.prototype.make_div = function (x, y, w, h, hook, id, color)
+{
+	var self = this;
+
+	w = Math.min(x + w, self.pointer_div_width - 1) - x;
+	h = Math.min(y + h, self.pointer_div_height - 1) - y;
+
+	if (H.embedded) {
+		self.pointer_div.makeDiv(x, y, w, h, self.highlight_radius, color);
+		return;
+	}
+
+	var div = H.createElem('div');
+	div.id = id;
+	div.style.width = "" + w + "px";
+	div.style.height = "" + h + "px";
+	div.style.backgroundColor = color;
+	div.style.position = "absolute";
+	div.style.left = "" + x + "px";
+	div.style.top = "" + y + "px";
+	div.style.zIndex = 2;
+	div.style.opacity = 0.3;
+	div.style.borderRadius = self.highlight_radius;
+	div.style.pointerEvents = "none";
+
+	hook.appendChild(div);
+	self.overlays.push(div);
+
+	// window.xlog("" + x + " " + y + " " + w + " " + h);
+};
+
+Hp12c_keyboard.prototype.reset_overlays_timer = function ()
+{
+	var self = this;
+
+	if (self.overlays_timer !== null) {
+		H.cancel_delay(self.overlays_timer);
+		self.overlays_timer = null;
+	}
+};
+
+Hp12c_keyboard.prototype.remove_overlays = function ()
+{
+	var self = this;
+
+	self.overlays_timer = null;
+
+	if (H.embedded) {
+		self.pointer_div.clearDiv();
+		return;
+	}
+
+	while (self.overlays.length > 0) {
+		var div = self.overlays.shift();
+		div.parentNode.removeChild(div);
+	}
+};
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, sub: true, bitwise: true */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
@@ -1959,11 +2586,12 @@ H.hp1xc_vertical_keyboard_flavor = function (vmap)
 {
 };
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, bitwise: true, strict: true, browser: true */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
@@ -1979,6 +2607,9 @@ function Hp12c_machine()
 	// TODO this should be in init_memory()
 	// and unit tests should wait it to go back to 1
 	this.sti_level = 0;
+
+	// changed by unit tests only
+	this.rapid_default = 0;
 
 	this.init_memory();
 }
@@ -2093,37 +2724,51 @@ Hp12c_machine.prototype.init_memory = function (n)
 	this.typed_mantissa_signal = 1;
 	this.typed_exponent = "00";
 	this.typed_exponent_signal = 1;
-	this.error_in_display = 0;
+
+	this.modal_state = H.MODAL_NONE;
+	this.modal_observers = {};
+	this.modal_data = null;
 
 	this.call_stack = []; // not-12C
+
+	// Visual feedback
+	this.fb = 1;
+	// "Rapid" programming and financial - does not try to imitate HP1xC speed
+	this.rapid = this.rapid_default;
 
 	if (H.type === '11c') {
 		this.nvN = ['x', 'y', 'z', 'w', 'last_x', 
 			  'decimals', 'comma', 'index',
-			  'trigo', 'user', 'notation'];
+			  'trigo', 'user', 'notation', 'fb', 'rapid'];
 		this.nvAN = ['stomemory', 'flags'];
+	} else if (H.type === '10c') {
+		this.nvN = ['x', 'y', 'z', 'w', 'last_x', 
+			  'decimals', 'comma',
+			  'trigo', 'notation', 'fb', 'rapid'];
+		this.nvAN = ['stomemory'];
 	} else if (H.type === '15c') {
 		this.nvN = ['x',  'y',  'z',  'w',  'last_x',
                             'xi', 'yi', 'zi', 'wi', 'last_xi',
                             'xh', 'yh', 'zh', 'wh', 'last_xh',
 			  'decimals', 'comma', 'index', 'indexh',
 			  'trigo', 'user', 'notation', 'complex',
-			  'mR'];
+			  'mR', 'fb', 'rapid'];
 		this.nvAN = ['stomemory', 'flags',
 				'mA', 'mB', 'mC', 'mD', 'mE',
 				'msA', 'msB', 'msC', 'msD', 'msE'];
 	} else if (H.type === '16c') {
 		this.nvN = ['x',  'y',  'z',  'w',  'last_x',
-			    'xh', 'yh', 'zh', 'wh', 'last_xh',
-			  'decimals', 'comma', 'index', 'notation',
-			  'wordsize', 'intwindow', 'negative_repr',
-			'altdisplay'];
+				'xh', 'yh', 'zh', 'wh', 'last_xh',
+				'decimals', 'comma', 'index', 'notation',
+				'wordsize', 'intwindow', 'negative_repr',
+				'fb', 'rapid'];
 		this.nvAN = ['stomemory', 'stomemoryh', 'flags'];
 	} else {
 		// 12C
 		this.nvN = ['x', 'y', 'z', 'w', 'last_x', 'algmode',
 				'decimals', 'comma', 'begin',
-				'dmy', 'compoundf', 'notation'];
+				'dmy', 'compoundf', 'notation', 'fb',
+				'rapid'];
 		this.nvAN = ['stomemory', 'finmemory', 'njmemory'];
 	}
 	this.nvAX = ['ram'];
@@ -2355,7 +3000,7 @@ Hp12c_machine.prototype.init = function ()
 	this.clear_prog(1);
 	this.do_clear_reg(); // implies reg, sto, fin
 	this.clear_stack();
-	this.error_in_display = 0;
+	this.display_flags(); // some flags affect display
 };
 
 Hp12c_machine.prototype.clear_fin = function ()
@@ -2449,7 +3094,7 @@ Hp12c_machine.prototype.clear_sto = function ()
 Hp12c_machine.prototype.cli = function (motive)
 {
 	this.sti_level--;
-	// console.log("cli " + this.sti_level + " " + motive);
+	window.console.ut_snap("cli  ", this.sti_level + " " + motive);
 	// this is cumulative i.e. two calls to cli(x) must be
 	// counterbalanced by two sti(x)'s
 	if (this.sti_level === 0) {
@@ -2460,7 +3105,7 @@ Hp12c_machine.prototype.cli = function (motive)
 Hp12c_machine.prototype.sti = function (motive)
 {
 	this.sti_level++;
-	// console.log("sti " + this.sti_level + " " + motive);
+	window.console.ut_snap("sti  ", this.sti_level + " " + motive);
 	if (this.sti_level === 1) {
 		H.keyboard.enable();
 	}
@@ -2468,12 +3113,16 @@ Hp12c_machine.prototype.sti = function (motive)
 
 Hp12c_machine.prototype.clear_typing = function ()
 {
+	var positive_clearing = (this.xmode > -1);
+
 	this.xmode = -1;
 	this.typed_mantissa = "";
 	this.typed_decimals = "";
 	this.typed_mantissa_signal = 1;
 	this.typed_exponent = "00";
 	this.typed_exponent_signal = 1;
+
+	return positive_clearing;
 };
 
 Hp12c_machine.prototype.display_result = function ()
@@ -2492,11 +3141,16 @@ Hp12c_machine.prototype.display_result_s = function (reset_window, enable_pushed
 		}
 	}
 
+	if (this.clear_typing()) {
+		// if a number was being typed, any further typing
+		// must push (e.g. 12 PSE 34 should push 12 to y,
+		// and not let it be overwritten by 34)
+		enable_pushed = true;
+	}
 	if (enable_pushed) {
 		this.pushed = 0;
 		this.pushed_cplx_exception = 0;
 	}
-	this.clear_typing();
 
 	var t = this.display_result_in();
 
@@ -2552,20 +3206,25 @@ Hp12c_machine.prototype.pse = function ()
 	var self = this;
 
 	if (H.type === "12c-platinum") {
-		this.algebra = [];
-		this.display_parentheses();
+		self.algebra = [];
+		self.display_parentheses();
 	}
 
-	this.cli("pse");
-	H.defer(function () {
-		// do after dispatcher clears modifier
-		H.display.show_pse();
-	});
+	// PSE pushes the stack
+	// (we can't count on reset_modal() for this because it may be
+	// executed in a program, and reset_modal() only pushes the stack
+	// in interactive mode)
+	self.display_result_s(false, false);
+
+	// PSE is somewhat special because it is modal but it also
+	// disables keyboard, and can be programmed
+	self.cli("pse");
+	self.enter_modal(H.MODAL_PAUSE);
+
 	H.delay(function () {
 		self.sti("pse");
-		self.display_modifier();
-		self.display_result_s(false, false);
-	}, 1000);
+		self.reset_modal();
+	}, 1200);
 };
 
 Hp12c_machine.prototype.toggle_decimal_character = function ()
@@ -2574,10 +3233,10 @@ Hp12c_machine.prototype.toggle_decimal_character = function ()
 		this.set_overflow(false);
 	}
 
-	this.comma = this.comma ? 0 : 1;
+	this.comma = (this.comma + 1) % H.SEPARATORS;
 	this.display_result();
 	H.storage.save();
-	console.log("Storage saved");
+	window.xlog("Storage saved");
 };
 
 Hp12c_machine.prototype.toggle_decimal_and_altdisplay = function ()
@@ -2593,17 +3252,6 @@ Hp12c_machine.prototype.toggle_decimal_and_altdisplay = function ()
 		this.display_wordstatus();
 		this.toggle_decimal_character();
 	}
-};
-
-Hp12c_machine.prototype.display_result_date = function (dd)
-{
-	if (H.type === "12c-platinum") {
-		this.algebra = [];
-		this.display_parentheses();
-	}
-
-	this.clear_typing();
-	H.display.show(H.date_to_show(dd, this.dmy));
 };
 
 Hp12c_machine.prototype.clear_stack = function ()
@@ -2648,7 +3296,7 @@ Hp12c_machine.prototype.clear_reg = function ()
 
 Hp12c_machine.prototype.do_clear_reg = function ()
 {
-	if (H.type !== "11c" && H.type !== "15c" && H.type !== "16c") {
+	if (H.type !== "10c" && H.type !== "11c" && H.type !== "15c" && H.type !== "16c") {
 		this.clear_stack();
 	}
 	this.index = 0;
@@ -2698,9 +3346,9 @@ Hp12c_machine.prototype.display_error = function (err)
 		this.display_parentheses();
 	}
 
-	H.display.show_error(err);
 	this.clear_typing();
-	this.error_in_display = 1;
+	this.modal_data = err;
+	this.enter_modal(H.MODAL_ERROR);
 
 	if (this.program_mode >= H.RUNNING) {
 		// errors stop programs
@@ -2708,14 +3356,71 @@ Hp12c_machine.prototype.display_error = function (err)
 	}
 };
 
-Hp12c_machine.prototype.reset_error = function ()
+Hp12c_machine.prototype.modal = function ()
 {
-	this.error_in_display = 0;
+	var self = this;
+	return self.modal_state;
+};
+
+Hp12c_machine.prototype.is_error = function ()
+{
+	var self = this;
+	return self.modal_state === H.MODAL_ERROR;
+};
+
+Hp12c_machine.prototype.error = function ()
+{
+	var self = this;
+	return (self.modal_state === H.MODAL_ERROR) ? self.modal_data : 0;
+};
+
+Hp12c_machine.prototype.enter_modal = function (m)
+{
+	var self = this;
+	self.modal_state = m;
+	window.xlog("modal " + m);
+	H.display.recycle();
+};
+
+Hp12c_machine.prototype.reset_modal = function ()
+{
+	var self = this;
+
+	var was = self.modal_state;
+	self.modal_state = H.MODAL_NONE;
+	self.modal_data = null;
+	window.xlog("rst modal " + was);
+
 	if (this.program_mode == H.INTERACTIVE) {
 		this.display_result_s(false, false);
 	} else if (this.program_mode == H.PROGRAMMING) {
 		this.display_program_opcode();
+	} else {
+		H.display.recycle();
 	}
+
+	var observers = self.modal_observers;
+	self.modal_observers = {};
+	H.defer(function () {
+		for (var name in observers) {
+			observers[name]();
+		}
+	});
+};
+
+Hp12c_machine.prototype.modal_observer = function (name, cb)
+{
+	var self = this;
+
+	self.modal_observers[name] = cb;
+};
+
+Hp12c_machine.prototype.modal_observer_remove = function (name)
+{
+	var self = this;
+
+	self.modal_observers[name] = undefined;
+	delete self.modal_observers[name];
 };
 
 Hp12c_machine.prototype.display_modifier2 = function (m)
@@ -2818,7 +3523,7 @@ Hp12c_machine.prototype.set_trigo = function (v)
 {
 	this.trigo = v;
 	this.display_trigo();
-	this.display_result();
+	this.display_result_s(true, false);
 };
 
 Hp12c_machine.prototype.rpn_mode = function ()
@@ -2827,14 +3532,14 @@ Hp12c_machine.prototype.rpn_mode = function ()
 	this.algebra = [];
 	this.display_parentheses();
 	this.display_algmode();
-	this.display_result();
+	this.display_result_s(true, false);
 };
 
 Hp12c_machine.prototype.toggle_compoundf = function ()
 {
 	this.compoundf = this.compoundf ? 0 : 1;
 	this.display_dmyc();
-	this.display_result();
+	this.display_result_s(true, false);
 };
 
 Hp12c_machine.prototype.toggle_user = function ()
@@ -2842,7 +3547,7 @@ Hp12c_machine.prototype.toggle_user = function ()
 	this.user = this.user ? 0 : 1;
 	this.display_user();
 	if (this.program_mode == H.INTERACTIVE) {
-		this.display_result();
+		this.display_result_s(true, false);
 	}
 };
 
@@ -2940,9 +3645,9 @@ Hp12c_machine.prototype.chk_int_overflow = function (typed)
 		// based on the fact that 1 decimal digit ~= 3.3 bits
 
 		var radix = H.radix[this.notation];
-		var x1 = H.string_to_integer(typed, this.negative_repr,
+		var x1 = H.string_to_integer_fast(typed, this.negative_repr,
 						this.wordsize, radix);
-		var x2 = H.string_to_integer(typed, this.negative_repr,
+		var x2 = H.string_to_integer_fast(typed, this.negative_repr,
 						this.wordsize + digit_bits,
 						radix);
 		if (x1.r !== x2.r || x1.h !== x2.h) {
@@ -2979,7 +3684,11 @@ Hp12c_machine.prototype.digit_add = function (d)
 			}
 			// just displayed a result
 			this.clear_typing();
-			this.typed_mantissa = this.chk_int_overflow("" + d);
+			if (this.notation >= H.NOTATION_INT) {
+				this.typed_mantissa = this.chk_int_overflow("" + d);
+			} else {
+				this.typed_mantissa += "" + d;
+			}
 			this.xmode = 0;
 		}
 	} else if (this.xmode === 0) {
@@ -2989,13 +3698,13 @@ Hp12c_machine.prototype.digit_add = function (d)
 				this.typed_mantissa = this.chk_int_overflow(this.typed_mantissa + "" + d);
 			}
 		} else {
-			if (this.typed_mantissa.length < H.display.display_len) {
+			if (this.typed_mantissa.length < H.display_len) {
 				this.typed_mantissa += "" + d;
 			}
 		}
 	} else if (this.xmode === 1) {
 		// integer mode never reaches this branch due to decimal_point_mode
-		if ((this.typed_mantissa.length + this.typed_decimals.length) < H.display.display_len) {
+		if ((this.typed_mantissa.length + this.typed_decimals.length) < H.display_len) {
 			this.typed_decimals += "" + d;
 		}
 	} else if (this.xmode === 100) {
@@ -3009,7 +3718,7 @@ Hp12c_machine.prototype.digit_add = function (d)
 
 Hp12c_machine.prototype.display_typing_integer = function ()
 {
-	var tu = H.string_to_integer(this.typed_mantissa, this.negative_repr,
+	var tu = H.string_to_integer_fast(this.typed_mantissa, this.negative_repr,
 					this.wordsize, H.radix[this.notation]);
 	this.reg_Set_tuple("x", tu);
 
@@ -3019,6 +3728,8 @@ Hp12c_machine.prototype.display_typing_integer = function ()
 
 Hp12c_machine.prototype.display_typing = function ()
 {
+	this.pushed = 0;
+
 	if (H.type === "16c" && this.notation >= H.NOTATION_INT) {
 		this.display_typing_integer();
 		return;
@@ -3036,7 +3747,7 @@ Hp12c_machine.prototype.display_typing = function ()
 
 	H.display.displayTypedNumber(this.typed_mantissa_signal, this.typed_mantissa,
 		this.typed_decimals, this.typed_exponent, this.typed_exponent_signal,
-		this.xmode);
+		this.xmode, this.notation);
 };
 
 Hp12c_machine.prototype.digit_delete = function ()
@@ -3049,24 +3760,26 @@ Hp12c_machine.prototype.digit_delete = function ()
 	}
 
 	if (this.xmode == -1) {
-		if (H.type === "11c" || H.type === "15c" || H.type === "16c") {
-			// backspace key actually exists in 11c/15c/16c
-			var imaginary = 0;
-			if (this.is_complex_mode()) {
-				// preserve imaginary
-				imaginary = this.xi;
-			}
-			this.reg_Set_tuple("x", {r: 0, h: 0, i: imaginary});
-
-			// changes to in-place number editing
-			// (does not push again when new number is typed)
-			this.pushed = 1;
-			this.pushed_cplx_exception = 1;
-
-			H.display.displayNumber(this.reg_tuple("x"));
-		} else {
-			// does nothing
+		if (H.type === "12c-platinum") {
+			// Backspace equivalent to CLx for "undo" operation
+			this.undoable = this.UNDOABLE_CLX;
+			this.undoable_assets = this.reg_real("x");
+			this.display_undo();
 		}
+
+		var imaginary = 0;
+		if (this.is_complex_mode()) {
+			// preserve imaginary
+			imaginary = this.xi;
+		}
+		this.reg_Set_tuple("x", {r: 0, h: 0, i: imaginary});
+
+		// changes to in-place number editing
+		// (does not push again when new number is typed)
+		this.pushed = 1;
+		this.pushed_cplx_exception = 1;
+
+		H.display.displayNumber(this.reg_tuple("x"));
 		return;
 	}
 
@@ -3097,11 +3810,16 @@ Hp12c_machine.prototype.digit_delete = function ()
 			this.typed_decimals = this.typed_decimals.substr(0, i);
 		}
 	} else if (this.xmode === 100) {
-		this.typed_exponent = "";
-		if (this.typed_decimals.length > 0) {
-			this.xmode = 1;
+		if (parseInt("0" + this.typed_exponent, 10) === 0) {
+			this.typed_exponent = "00";
+			this.typed_exponent_signal = 1;
+			if (this.typed_decimals.length > 0) {
+				this.xmode = 1;
+			} else {
+				this.xmode = 0;
+			}
 		} else {
-			this.xmode = 0;
+			this.typed_exponent = "0" + this.typed_exponent.substr(0, 1);
 		}
 	}
 
@@ -3123,7 +3841,7 @@ Hp12c_machine.prototype.input_exponential = function ()
 		this.typed_mantissa = "1";
 
 	} else if (this.xmode != 100) {
-		if (this.typed_mantissa.length > (H.display.display_len - 3)) {
+		if (this.typed_mantissa.length > (H.display_len - 3)) {
 			// too long; refuse
 			return;
 		}
@@ -3147,7 +3865,7 @@ Hp12c_machine.prototype.input_exponential = function ()
 				zeros = Math.max(0, zeros);
 			
 				if ((this.typed_mantissa.length + zeros) >=
-						(H.display.display_len - 3)) {
+						(H.display_len - 3)) {
 					// too long; refuse
 					return;
 				}
@@ -3243,7 +3961,9 @@ Hp12c_machine.prototype.save_lastx = function ()
 
 Hp12c_machine.prototype.lstx = function ()
 {
-	this.push();
+	if (! this.pushed) {
+		this.push();
+	}
 	this.reg_To_reg("last_x", "x");
 	this.display_result();
 };
@@ -3262,6 +3982,29 @@ Hp12c_machine.prototype.shv = function ()
 		this.reg_Set_real("x", H.sve);
 	}
 	this.display_result();
+};
+
+Hp12c_machine.prototype.test_offsets = function ()
+{
+	H.keyboard.test();
+};
+
+Hp12c_machine.prototype.toggle_feedback = function ()
+{
+	this.fb = this.fb ? 0 : 1;
+	window.xlog("Toggling feedback to " + this.fb);
+};
+
+Hp12c_machine.prototype.rapid_on = function ()
+{
+	this.rapid = 1;
+	window.xlog("Toggling rapid ON");
+};
+
+Hp12c_machine.prototype.rapid_off = function ()
+{
+	this.rapid = 0;
+	window.xlog("Toggling rapid OFF");
 };
 
 Hp12c_machine.prototype.apocryphal = function (i)
@@ -3298,20 +4041,20 @@ Hp12c_machine.prototype.clear_prefix = function ()
 		order = 1;
 	}
 
-	if (order == Math.floor(order)) {
-		order += 0.1;
+	// result may have 11 significant digits in corner cases
+	n = n * Math.pow(10, H.display_len - Math.ceil(order));
+
+	var s = n.toFixed(0);
+	s = H.zeropad(s, H.display_len); // probably unnecessary
+	s = s.substr(0, 10);
+
+	H.display.show_nopgrm(" " + s);
+
+	if (self.program_mode < H.RUNNING) {
+		self.enter_modal(H.MODAL_PRESS);
+	} else {
+		// can only happen in unit tests
 	}
-
-	n = n * Math.pow(10, H.display.display_len - Math.ceil(order));
-
-	this.cli("clear_prefix");
-
-	H.display.show(H.zeropad(n.toFixed(0), H.display.display_len));
-
-	H.delay(function () {
-		self.sti("clear_prefix");
-		self.display_result_s(false, false);
-	}, 1000);
 };
 
 Hp12c_machine.prototype.x_exchange_y = function ()
@@ -3372,8 +4115,15 @@ Hp12c_machine.prototype.x_exchange_index_itself = function ()
 
 Hp12c_machine.prototype.mem_info = function ()
 {
-	H.display.display_meminfo(this.ram_available(), this.sto_mem_len());
-	this.error_in_display = 1;
+	var self = this;
+	var mem = self.ram_available();
+	var stolen = self.sto_mem_len();
+
+	--stolen;
+	var stolen_txt = (stolen % 100).toFixed(0);
+
+	H.display.show_nopgrm("P-" + H.zeropad(mem, H.ram_ADDR_SIZE) + " R-" + stolen_txt, false);
+	self.enter_modal(H.MODAL_PRESS);
 };
 
 Hp12c_machine.prototype.sf = function (i)
@@ -3525,6 +4275,7 @@ Hp12c_machine.prototype.clx = function ()
 
 	this.display_result();
 	this.pushed = 1; // do not push if user retries typing
+	// replaced even by RCL
 	this.pushed_cplx_exception = 1;
 };
 
@@ -3577,9 +4328,19 @@ Hp12c_machine.prototype.enter = function (g_modifier)
 			this.display_result();
 		}
 	} else {
+		this.easter_egg();
 		this.push();
 		this.display_result();
 		this.pushed = 1; // already pushed, do not push twice when user types new number
+	}
+};
+
+Hp12c_machine.prototype.easter_egg = function ()
+{
+	if (this.x === 0xf457123) {
+		this.rapid_on();
+	} else if (this.x == 0xf457122) {
+		this.rapid_off();
 	}
 };
 
@@ -3608,7 +4369,7 @@ Hp12c_machine.prototype.plus = function ()
 			this.algebra.push(this.reg_real("x"));
 		}
 		this.algebra.push("+");
-		console.log("[+] " + this.algebra.join(" "));
+		window.xlog("[+] " + this.algebra.join(" "));
 		this.display_parentheses();
 		this.push();
 		this.display_result();
@@ -3650,7 +4411,7 @@ Hp12c_machine.prototype.minus = function ()
 			this.algebra.push(this.reg_real("x"));
 		}
 		this.algebra.push("-");
-		console.log("[-] " + this.algebra.join(" "));
+		window.xlog("[-] " + this.algebra.join(" "));
 		this.display_parentheses();
 		this.push();
 		this.display_result();
@@ -3694,7 +4455,7 @@ Hp12c_machine.prototype.multiply = function ()
 			this.algebra.push(this.reg_real("x"));
 		}
 		this.algebra.push("*");
-		console.log("[*] " + this.algebra.join(" "));
+		window.xlog("[*] " + this.algebra.join(" "));
 		this.display_parentheses();
 		this.push();
 		this.display_result();
@@ -3742,7 +4503,7 @@ Hp12c_machine.prototype.divide = function ()
 			this.algebra.push(this.reg_real("x"));
 		}
 		this.algebra.push("/");
-		console.log("[/] " + this.algebra.join(" "));
+		window.xlog("[/] " + this.algebra.join(" "));
 		this.display_parentheses();
 		this.push();
 		this.display_result();
@@ -3750,7 +4511,11 @@ Hp12c_machine.prototype.divide = function ()
 		x = this.reg_tuple("x");
 		y = this.reg_tuple("y");
 		calc = H.complex_divide(y, x);
-		this.finish_arithmetic_complex(calc, x, y);
+		if (calc.err) {
+			this.display_error(H.ERROR_DIVZERO);
+		} else {
+			this.finish_arithmetic_complex(calc, x, y);
+		}
 	} else {
 		calc = this.reg_real("y") / this.reg_real("x");
 		if (H.badnumber(calc)) {
@@ -3778,7 +4543,7 @@ Hp12c_machine.prototype.poweryx = function ()
 			this.algebra.push(this.reg_real("x"));
 		}
 		this.algebra.push("^");
-		console.log("[^] " + this.algebra.join(" "));
+		window.xlog("[^] " + this.algebra.join(" "));
 		this.display_parentheses();
 		this.push();
 		this.display_result();
@@ -3787,7 +4552,7 @@ Hp12c_machine.prototype.poweryx = function ()
 		var y = this.reg_tuple("y");
 		var calc = H.complex_power(y, x);
 		if (calc.err) {
-			console.log("complex power err");
+			window.xlog("complex power err");
 			this.display_error(H.ERROR_DIVZERO);
 		} else {
 			this.finish_arithmetic_complex(calc, x, y);
@@ -3958,7 +4723,17 @@ Hp12c_machine.prototype.exp = function ()
 	this.display_result();
 };
 
+Hp12c_machine.prototype.ln_imag = function ()
+{
+	return this.do_ln(true);
+};
+
 Hp12c_machine.prototype.ln = function ()
+{
+	return this.do_ln(false);
+};
+
+Hp12c_machine.prototype.do_ln = function (bs_cplx)
 {
 	var self = this;
 
@@ -3975,6 +4750,20 @@ Hp12c_machine.prototype.ln = function ()
 		}
 		this.save_lastx();
 		this.reg_Set_tuple("x", cres);
+		this.display_result();
+
+		return;
+
+	} else if (bs_cplx) {
+		var tuple = {r: this.reg_real("x"), i: this.reg_real("y")};
+		var cres2 = H.complex_ln(tuple);
+		if (cres2.err) {
+			this.display_error(H.ERROR_DIVZERO);
+			return;
+		}
+		this.save_lastx();
+		this.reg_Set_real("x", cres2.r);
+		this.reg_Set_real("y", cres2.i);
 		this.display_result();
 
 		return;
@@ -4265,14 +5054,18 @@ Hp12c_machine.prototype.to_hour = function ()
 
 Hp12c_machine.prototype.pi = function ()
 {
-	this.push();
+	if (! this.pushed) {
+		this.push();
+	}
 	this.reg_Set_real("x", Math.PI);
 	this.display_result();
 };
 
 Hp12c_machine.prototype.random = function ()
 {
-	this.push();
+	if (! this.pushed) {
+		this.push();
+	}
 	this.reg_Set_real("x", this.prng.random());
 	this.display_result();
 };
@@ -4374,12 +5167,13 @@ Hp12c_machine.prototype.fatorial = function ()
 		return;
 	}
 
-	if ((H.type !== "11c" && H.type !== "15c" && H.type !== "16c") &&
-			(this.reg_real("x") < 0 ||
-				this.reg_real("x") !=
-					Math.floor(this.reg_real("x")))) {
-		this.display_error(H.ERROR_DIVZERO);
-		return;
+	// 12C-BlackScholes can do gamma as well
+	if (H.type === "12c" || H.type === "12c-platinum") {
+		if (this.reg_real("x") < 0 ||
+				this.reg_real("x") != Math.floor(this.reg_real("x"))) {
+			this.display_error(H.ERROR_DIVZERO);
+			return;
+		}
 	}
 
 	if (this.reg_real("x") > 69.95) {
@@ -4391,10 +5185,10 @@ Hp12c_machine.prototype.fatorial = function ()
 
 	var res;
 
-	if (H.type === "11c" || H.type === "15c") {
-		res = H.fatorial_gamma(this.reg_real("x"));
-	} else {
+	if (H.type === "12c" || H.type === "12c-platinum") {
 		res = H.fatorial(this.reg_real("x"));
+	} else {
+		res = H.fatorial_gamma(this.reg_real("x"));
 	}
 
 	if (H.badnumber(res)) {
@@ -4502,7 +5296,9 @@ Hp12c_machine.prototype.sto_index = function (pos)
 
 Hp12c_machine.prototype.get_index = function ()
 {
-	this.push();
+	if (! this.pushed) {
+		this.push();
+	}
 	this.reg_Set_tuple("x", {r: this.index, h: this.indexh, i: 0});
 	this.display_result();
 };
@@ -4564,9 +5360,11 @@ Hp12c_machine.prototype.stoinfix_core = function (a, operation)
 
 Hp12c_machine.prototype.rcl = function (pos)
 {
-	this.push(); // every RCL pushes the result to stack
+	if (! this.pushed) {
+		this.push();
+	}
 	this.sto_To_reg(pos, "x");
-	this.display_result();
+	this.display_result(); // enables pushing
 };
 
 Hp12c_machine.prototype.rcl_index = function (pos)
@@ -4582,14 +5380,18 @@ Hp12c_machine.prototype.rcl_index = function (pos)
 		return;
 	}
 
-	this.push(); // every RCL pushes the result to stack
+	if (! this.pushed) {
+		this.push();
+	}
 	this.sto_To_reg(index, "x");
-	this.display_result();
+	this.display_result(); // enables pushing
 };
 
 Hp12c_machine.prototype.stat_sigma_rcl = function ()
 {
-	this.push();
+	if (! this.pushed) {
+		this.push();
+	}
 	this.push();
 	this.sto_To_reg(H.STAT_X, "x");
 	this.sto_To_reg(H.STAT_Y, "y");
@@ -4667,7 +5469,9 @@ Hp12c_machine.prototype.stat_avg = function ()
 	if (! res[0]) {
 		this.display_error(H.ERROR_STAT);
 	} else {
-		this.save_lastx();
+		if (! this.pushed) {
+			this.push();
+		}
 		this.push();
 		this.reg_Set_real("x", res[1]);
 		this.reg_Set_real("y", res[2]);
@@ -4688,7 +5492,9 @@ Hp12c_machine.prototype.stat_stddev = function ()
 		return;
 	}
 
-	this.save_lastx();
+	if (! this.pushed) {
+		this.push();
+	}
 	this.push();
 	this.reg_Set_real("x", res[1]);
 	this.reg_Set_real("y", res[2]);
@@ -4735,8 +5541,9 @@ Hp12c_machine.prototype.stat_linearregression = function ()
 	if (! res[0]) {
 		this.display_error(H.ERROR_STAT);
 	} else {
-		this.save_lastx();
-		this.push();
+		if (! this.pushed) {
+			this.push();
+		}
 		this.push();
 		this.reg_Set_real("x", res[1]); // B
 		this.reg_Set_real("y", res[2]); // A
@@ -4804,7 +5611,7 @@ Hp12c_machine.prototype.display_program_opcode = function ()
 
 	var txt = H.zeropad(this.ip.toFixed(0), H.ram_ADDR_SIZE) +
 				"-" + instr;
-	H.display.show(txt);
+	H.display.show_nopgrm(txt);
 };
 
 Hp12c_machine.prototype.prog_pr = function ()
@@ -4821,12 +5628,6 @@ Hp12c_machine.prototype.prog_pr = function ()
 		this.display_pgrm();
 		this.display_program_opcode();
 	}
-};
-
-Hp12c_machine.prototype.prog_bst_after = function ()
-{
-	this.sti("bst_after");
-	this.display_result_s(false, false);
 };
 
 Hp12c_machine.prototype.gto_digit_add = function (n)
@@ -5091,19 +5892,26 @@ Hp12c_machine.prototype.stoinfix_index = function (operation)
 
 	this.stoinfix(index, operation);
 };
-/* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
- * All rights reserved.
- */
-
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
-/*global H */
+/*jshint globalstrict: true*/
+/*global H, Hp12c_dispatcher */
 
 "use strict";
 
 function Hp12c_dispatcher()
 {
 }
+
+/* HP-12C emulator 
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
+ * All rights reserved.
+ */
+
+/*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
+/*global H, Hp12c_dispatcher */
+
+"use strict";
 
 // aliases to function and modifier arrays;
 var K = [];
@@ -5133,6 +5941,7 @@ H.STO2 = H.STO * 100 + 48;
 H.STO_FF = H.STO * 100 + H.FF;
 H.RCL_FF = H.RCL * 100 + H.FF;
 H.RCL2 = H.RCL * 100 + 48;
+H.RCL_GG = H.RCL * 100 + H.GG;
 H.STO_PLUS = H.STO * 100 + 40;
 H.STO_MINUS = H.STO * 100 + 30;
 H.STO_TIMES = H.STO * 100 + 20;
@@ -5397,6 +6206,7 @@ K[I][H.FF] = H.make_closure("clear_prefix", [], "CLEAR PREFIX");
 K[I][H.FF].no_pgrm = 1;
 K[I][H.GG] = H.make_closure("clx", [], "CLx");
 K[I][0] = H.make_closure("digit_delete", [], "BSP");
+K[I][0].no_pgrm = 1;
 
 I = 36;
 
@@ -5438,6 +6248,8 @@ K[I][H.RCL] = H.make_closure("shv", [], "SHV");
 K[I][H.RCL].no_pgrm = 1;
 K[I][H.STO] = H.make_closure("apocryphal", [1], "APOCRYPHAL 1");
 K[I][H.STO].no_pgrm = 1;
+K[I][H.RCL_GG] = H.make_closure("test_offsets", [], "TEST OFFSETS");
+K[I][H.RCL_GG].no_pgrm = 1;
 
 I = 42;
 
@@ -5452,6 +6264,7 @@ M[I][0] = H.FF;
 I = 43;
 
 M[I][0] = H.GG;
+M[I][H.RCL] = H.RCL_GG;
 
 I = 44;
 
@@ -5498,6 +6311,8 @@ K[I][0] = H.make_closure("plus", [], "+");
 K[I][H.FF] = H.make_closure("test_x_eq_y", [], "x=y");
 K[I][H.GG] = H.make_closure("test_x_eq0", [], "x=0");
 M[I][H.STO] = H.STO_PLUS;
+K[I][H.RCL_GG] = H.make_closure("toggle_feedback", [], "TOGGLE FEEDBACK");
+K[I][H.RCL_GG].no_pgrm = 1;
 
 I = 50;
 
@@ -5508,10 +6323,12 @@ K[I][0] = H.make_closure("nop", [], "NOP");
 M = undefined;
 K = undefined;
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
 /*global H, Hp12c_dispatcher */
 
 "use strict";
 
+// overridden by 12C and 16C flavors
 Hp12c_dispatcher.prototype.handle_modifier = function (key, pgrm_mode, exec_mode)
 {
 	var modifier_table = this.modifier_sm[key];
@@ -5540,6 +6357,7 @@ Hp12c_dispatcher.prototype.handle_modifier = function (key, pgrm_mode, exec_mode
 	return false;
 };
 
+// overridden by 12C and 16C flavors
 Hp12c_dispatcher.prototype.find_function = function (key, pgrm_mode, query, exec_mode)
 {
 	var function_table = this.functions[key];
@@ -5596,20 +6414,41 @@ Hp12c_dispatcher.prototype.find_function = function (key, pgrm_mode, query, exec
 	return f;
 };
 
-Hp12c_dispatcher.prototype.dispatch = function (key)
+// Used by all flavors
+Hp12c_dispatcher.prototype.dispatch_basic = function (key)
 {
-	// this is used when a real key is pressed
+	var self = this;
 
+	// 'special' keys that do not belong to calculator itself
 	if (key == 99) {
 		H.debug.show_memory();
-		return;
+		return true;
+	} else if (key === 200) {
+		self.lcd_left();
+		return true;
+	} else if (key === 201) {
+		self.lcd_right();
+		return true;
 	}
 
-	if (H.machine.error_in_display) {
-		H.machine.reset_error();
-		return;
+	if (H.machine.program_mode === H.RUNNING_STEP_PRE) {
+		H.pgrm.run_step_finish();
+		return true;
+	} else if (H.machine.modal() > 0) {
+		H.machine.reset_modal();
+		return true;
 	} else if (H.machine.program_mode >= H.RUNNING) {
 		H.pgrm.stop(1);
+		return true;
+	}
+
+	return false;
+};
+
+// overridden by 12C and 16C flavors
+Hp12c_dispatcher.prototype.dispatch = function (key)
+{
+	if (this.dispatch_basic(key)) {
 		return;
 	}
 
@@ -5663,6 +6502,7 @@ Hp12c_dispatcher.prototype.dispatch = function (key)
 	this.dispatch_common(key, false);
 };
 
+// overridden by 12C and 16C flavors
 Hp12c_dispatcher.prototype.dispatch_common = function (key, in_exec)
 {
 	var ok = 1;
@@ -5695,6 +6535,18 @@ Hp12c_dispatcher.prototype.dispatch_common = function (key, in_exec)
 
 	return ok;
 };
+
+// overridden when touching LCD is to have some collateral effect
+Hp12c_dispatcher.prototype.lcd_left = function ()
+{
+	window.xlog("LCD left side touched");
+};
+
+// overridden when touching LCD is to have some collateral effect
+Hp12c_dispatcher.prototype.lcd_right = function ()
+{
+	window.xlog("LCD right side touched");
+};
 H.asm_reverse_map = null;
 H.asm_ucode_reverse_map = null;
 
@@ -5709,23 +6561,29 @@ H.asm_make_reverse_map = function ()
 
 	// pure modifier keys, with no K[key][0]
 	umap.FF = 42;
-	umap.GG = 43;
 	umap.STO = 44;
 	umap.RCL = 45;
 	if (H.type === "16c") {
+		umap.GG = 43;
 		umap.GSB = 21;
 		umap.LBL = 22;
 		umap.GTO = 22;
+	} else if (H.type === "10c") {
+		umap.GTO = 22;
 	} else if (H.type === "11c" || H.type === "15c") {
+		umap.GG = 43;
 		umap.GTO = 22;
 		umap.GSB = 32;
 		umap.LBL = 21;
+		umap.DIM = 23;
+		umap.MATRIX = 16;
 		umap.A = 11;
 		umap.B = 12;
 		umap.C = 13;
 		umap.D = 14;
 		umap.E = 15;
 	} else { // 12c
+		umap.GG = 43;
 		umap.GTO = 33;
 	}
 
@@ -5766,7 +6624,7 @@ H.asm_make_reverse_map = function ()
 		}
 	}
 
-	console.log("Making asm done");
+	window.xlog("Making asm done");
 };
 
 H.asm_condition = function (s)
@@ -5785,11 +6643,32 @@ H.asm_gto12 = function (s)
 
 	var ip = 0 + s.substr(4);
 	if (ip >= H.ram_MAX) {
-		console.log("IP too high: " + s);
+		window.xlog("IP too high: " + s);
 		return null;
 	}
 
+	// TODO 4333 should come from dispatch
 	return Hp12c_pgrm.p_encode_instruction(parseInt(4333, 10),
+						parseInt(ip, 10),
+						true);
+};
+
+H.asm_gto10 = function (s) 
+{
+	var regex_gto10 = new RegExp('^GTO [0-9]+$');
+
+	if (! regex_gto10.test(s)) {
+		return null;
+	}
+
+	var ip = 0 + s.substr(4);
+	if (ip >= H.ram_MAX) {
+		window.xlog("IP too high: " + s);
+		return null;
+	}
+
+	// TODO 22 should come from dispatch
+	return Hp12c_pgrm.p_encode_instruction(parseInt(22, 10),
 						parseInt(ip, 10),
 						true);
 };
@@ -5803,6 +6682,7 @@ H.asm = function (instr, query)
 	var map = H.asm_reverse_map;
 
 	var c12 = H.is_12c();
+	var c10 = H.type === "10c";
 
 	instr = H.asm_condition(instr);
 	var opcode = null;
@@ -5811,6 +6691,8 @@ H.asm = function (instr, query)
 		opcode = map[instr];
 	} else if (c12 && H.asm_gto12(instr)) {
 		opcode = H.asm_gto12(instr);
+	} else if (c10 && H.asm_gto10(instr)) {
+		opcode = H.asm_gto10(instr);
 	} else {
 		if (! query) {
 			throw "asm: Invalid instruction: " + instr;
@@ -5897,8 +6779,8 @@ H.asm_compile = function (progr, base_addr)
 H.asm_microcode_exec = function (microcode, monitor)
 {
 	for (var i = 0; i < microcode.length; ++i) {
+		window.xlog("> Typed " + microcode[i]);
 		H.dispatcher.dispatch(microcode[i]);
-		printf("Typed " + microcode[i] + " " + H.machine.x);
 		if (monitor) {
 			monitor(i);
 		}
@@ -5927,11 +6809,12 @@ H.asm_microcode_compile = function (microprogram)
 	return microcode;
 };
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
-/*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
+/*jshint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: false */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
@@ -5940,12 +6823,30 @@ H.INTERPOLATION_MAX = 100;
 
 H.solve_infinity = function (val)
 {
-	if (val > Math.pow(10, 95)) {
-		val = Math.pow(10, 95);
-	} else if (val < -Math.pow(10, 95)) {
-		val = -Math.pow(10, 95);
+	if (val > 1e95) {
+		val = 1e95;
+	} else if (val < -1e95) {
+		val = -1e95;
 	}
 	return val;
+};
+
+// better pow() for bases in the form 1 + i when i is small
+// base is actually (1 + base_m1)
+H.finance_pow = function (base_m1, exponent)
+{
+	if (Math.abs(base_m1) > 0.000001) {
+		return Math.pow(1 + base_m1, exponent);
+	}
+	// pow(b, e) = exp(e * ln(b))
+	// use the fact ln(1+x) ~= x for x very near 1
+	// pow(B + 1, e) = exp(e * B)
+	// use a small Taylor series
+	// idea from http://colorfulengineering.org/logmath-notes.pdf
+	// In the future, when all Javascript engines support log1p(),
+	// we can replace this by log1p()
+	var log_m1 = (-0.5 * base_m1 + 1.0) * base_m1;
+	return Math.exp(exponent * log_m1);
 };
 
 H.npv = function (n, i, cfj, nj)
@@ -5956,7 +6857,7 @@ H.npv = function (n, i, cfj, nj)
 		var cf = cfj[e];
 		for (var f = 1; f <= nj[e]; ++f) {
 			++pmt;
-			res += cf / Math.pow(1 + (i / 100), pmt);
+			res += cf / H.finance_pow(i / 100, pmt);
 		}
 	}
 	return res;
@@ -6001,7 +6902,7 @@ H.comppmtlim = function (i, n)
 	if (Math.abs(i) < 0.0000000001) {
 		return n;
 	} else {
-		return (1 - Math.pow(1 + (i / 100), -n)) / (i / 100);
+		return (1 - H.finance_pow(i / 100, -n)) / (i / 100);
 	}
 };
 
@@ -6010,15 +6911,15 @@ H.calcNPV = function (is_n, n, i, pv, pmt, fv, begin, compoundf)
 	if (n == Math.floor(n) || is_n) {
 		return pv + 
 			(1 + (i / 100) * (begin ? 1:0)) * pmt * H.comppmtlim(i, n) + 
-			fv * Math.pow(1 + (i / 100), -n);
+			fv * H.finance_pow(i / 100, -n);
 	} else if (! compoundf) {
 		return pv * (1 + ((i / 100) * (n - Math.floor(n)))) + 
 			(1 + (i / 100) * (begin ? 1:0)) * pmt * H.comppmtlim(i, Math.floor(n)) +
-			fv * Math.pow(1 + (i / 100), -Math.floor(n));
+			fv * H.finance_pow(i / 100, -Math.floor(n));
 	} else {
-		return pv * Math.pow(1 + (i / 100), (n - Math.floor(n))) + 
+		return pv * H.finance_pow(i / 100, (n - Math.floor(n))) + 
 			(1 + (i / 100) * (begin ? 1 : 0)) * pmt * H.comppmtlim(i, Math.floor(n)) +
-			fv * Math.pow(1 + (i / 100), -Math.floor(n));
+			fv * H.finance_pow(i / 100, -Math.floor(n));
 	}
 };
 
@@ -6083,10 +6984,10 @@ H.bond_price = function (desired_rate, coupon_year, buy, maturity)
 	if (tottime <= E) {
 		price = (100 * (100 + coupon_year / 2)) / (100 + ((tottime / E) * desired_rate / 2)); // present-value price
 	} else {
-		price = 100 / Math.pow(1 + desired_rate / 200, coupons - 1 + dsc / E); // present-value price
+		price = 100 / H.finance_pow(desired_rate / 200, coupons - 1 + dsc / E); // present-value price
 		for (var e = 1; e <= coupons; ++e) {
 			// accumulate present value of all future coupons
-			price += (coupon_year / 2) / Math.pow(1 + desired_rate / 200, e - 1 + dsc / E); 
+			price += (coupon_year / 2) / H.finance_pow(desired_rate / 200, e - 1 + dsc / E); 
 		}
 	}
 	tot_interest = (coupon_year / 2) * dcs / E;
@@ -6139,7 +7040,7 @@ H.irr_calc = function (n, i, cfj, nj)
 	// find an interval guessL..guessH that contains NPV = 0
 	var iteration = H.INTERPOLATION_MAX;
 	while (--iteration >= 0) {
-		// console.log("Trying interval " + guessL + " " + guessH);
+		// window.xlog("Trying interval " + guessL + " " + guessH);
 		NPVH = H.npv(n, guessH, cfj, nj);
 		NPVL = H.npv(n, guessL, cfj, nj);
 
@@ -6162,7 +7063,7 @@ H.irr_calc = function (n, i, cfj, nj)
 		// Now bisect to find NPV(guess) = 0
 		iteration = H.INTERPOLATION_MAX;
 		while (--iteration >= 0) {	
-			// console.log("Trying bisection " + guessL + " " + guessH);
+			// window.xlog("Trying bisection " + guessL + " " + guessH);
 			var avg = (guessL + guessH) / 2;
 			NPVA = H.npv(n, avg, cfj, nj);
 	
@@ -6180,7 +7081,7 @@ H.irr_calc = function (n, i, cfj, nj)
 				guessL = avg;
 			}
 	
-			// console.log("Interval NPV is " + NPVL + " " + NPVH);
+			// window.xlog("Interval NPV is " + NPVL + " " + NPVH);
 		}
 	}
 	
@@ -6232,24 +7133,34 @@ H.financecalc = function (dependent, begin, compoundf, finarray)
 		return H.ERROR_INTEREST;
 	}
 
-	var threshold = 0.00000000000125;
+	var threshold = 0.00000000000125; // 12 significant digits for NPV calc
 	var threshold_order = 0;
+	var threshold_result = 0.0000000000125; // 11 significant digits for result
+	var threshold_result_order = 0;
 
-	// correct threshold so it is more "lax" when involved numbers are too big
+	// correct threshold so it is proportional to the numbers involved
 	if (dependent != H.FIN_PV) {
 		threshold_order += Math.abs(finarray[H.FIN_PV]);
+		threshold_result_order += Math.abs(finarray[H.FIN_PV]);
 	}
 	if (dependent != H.FIN_PMT) {
 		threshold_order += Math.abs(finarray[H.FIN_PMT]);
+		threshold_result_order += Math.abs(finarray[H.FIN_PMT]);
 	}
 	if (dependent != H.FIN_N && dependent != H.FIN_PMT) {
+		// reduce calc precision because big N might make it impossible to 
+		// find a result if too picky
 		threshold_order += Math.abs(finarray[H.FIN_N] * finarray[H.FIN_PMT]);
 	}
 	if (dependent != H.FIN_FV) {
 		threshold_order += Math.abs(finarray[H.FIN_FV]);
+		threshold_result_order += Math.abs(finarray[H.FIN_FV]);
 	}
 	if (threshold_order > 0) {
 		threshold *= threshold_order;
+	}
+	if (threshold_result_order > 0) {
+		threshold_result *= threshold_result_order;
 	}
 
 	if (dependent === 1) {
@@ -6284,6 +7195,11 @@ H.financecalc = function (dependent, begin, compoundf, finarray)
 					finarray[dependent] = Math.floor(finarray[dependent]) + 1;
 				} else {
 					finarray[dependent] = Math.floor(finarray[dependent]);
+				}
+			} else {
+				// handle insignificant residues for PV, PMT and FV
+				if (Math.abs(finarray[dependent]) < threshold_result) {
+					finarray[dependent] = 0;
 				}
 			}
 			saved = finarray[dependent];
@@ -6328,7 +7244,7 @@ H.financecalc_i = function (dependent, begin, compoundf, finarray, threshold, th
 	// find an interval guessL..guessH that contains NPV = 0
 	var iteration = H.INTERPOLATION_MAX;
 	while (--iteration >= 0) {
-		// console.log("Trying interval " + guessL + " " + guessH);
+		// window.xlog("Trying interval " + guessL + " " + guessH);
 		finarray[dependent] = guessH;
 		NPVH = H.calcNPV(dependent === 0,
 				finarray[H.FIN_N], finarray[H.FIN_I], finarray[H.FIN_PV], 
@@ -6339,7 +7255,7 @@ H.financecalc_i = function (dependent, begin, compoundf, finarray, threshold, th
 				finarray[H.FIN_N], finarray[H.FIN_I], finarray[H.FIN_PV], 
 				finarray[H.FIN_PMT], finarray[H.FIN_FV], begin, compoundf);
 
-		// console.log("Interval NPV is " + NPVL + " " + NPVH);
+		// window.xlog("Interval NPV is " + NPVL + " " + NPVH);
 
 		// success condition
 		if ((NPVH * NPVL) < 0) {
@@ -6355,7 +7271,7 @@ H.financecalc_i = function (dependent, begin, compoundf, finarray, threshold, th
 		// Now bisect to find NPV(guess) = 0
 		iteration = H.INTERPOLATION_MAX;
 		while (--iteration >= 0) {	
-			// console.log("Trying bisection " + guessL + " " + guessH);
+			// window.xlog("Trying bisection " + guessL + " " + guessH);
 			var avg = (guessL + guessH) / 2;
 			finarray[dependent] = avg;
 			NPVA = H.calcNPV(dependent === 0,
@@ -6376,7 +7292,7 @@ H.financecalc_i = function (dependent, begin, compoundf, finarray, threshold, th
 				guessL = avg;
 			}
 	
-			// console.log("Interval NPV is " + NPVL + " " + NPVH);
+			// window.xlog("Interval NPV is " + NPVL + " " + NPVH);
 		}
 	}
 	
@@ -6410,7 +7326,7 @@ H.bond_yield = function (coupon_year, buy, maturity, price)
 	// find an interval guessL..guessH that contains NPV = 0
 	var iteration = H.INTERPOLATION_MAX;
 	while (--iteration >= 0) {
-		// console.log("Trying interval " + guessL + " " + guessH);
+		// window.xlog("Trying interval " + guessL + " " + guessH);
 		NPVL = H.bond_price(guessL, coupon_year, buy, maturity);
 		if (NPVL[0] >= 0) {
 			err = NPVL[0];
@@ -6443,7 +7359,7 @@ H.bond_yield = function (coupon_year, buy, maturity, price)
 		// Now bisect to find NPV(guess) = 0
 		iteration = H.INTERPOLATION_MAX;
 		while (--iteration >= 0) {	
-			// console.log("Trying bisection " + guessL + " " + guessH);
+			// window.xlog("Trying bisection " + guessL + " " + guessH);
 			var avg = (guessL + guessH) / 2;
 			NPVA = H.bond_price(avg, coupon_year, buy, maturity);
 			/*
@@ -6471,7 +7387,7 @@ H.bond_yield = function (coupon_year, buy, maturity, price)
 				guessL = avg;
 			}
 	
-			// console.log("Interval NPV is " + NPVL + " " + NPVH);
+			// window.xlog("Interval NPV is " + NPVL + " " + NPVH);
 		}
 	}
 
@@ -6483,7 +7399,7 @@ H.depreciation_sl = function (cost, sell, life, year)
 	var depr = 0;
 	var rest = cost - sell;
 
-	if (year < 0 || year != Math.floor(year) || life <= 0 || life > Math.pow(10, 10)) {
+	if (year < 0 || year != Math.floor(year) || life <= 0 || life > 1e10) {
 		return [H.ERROR_INTEREST, 0, 0];
 	}
 
@@ -6506,7 +7422,7 @@ H.depreciation_soyd = function (cost, sell, life, year)
 	var depr = 0;
 	var rest = cost - sell;
 
-	if (year < 0 || year != Math.floor(year) || life <= 0 || life > Math.pow(10, 10)) {
+	if (year < 0 || year != Math.floor(year) || life <= 0 || life > 1e10) {
 		return [H.ERROR_INTEREST, 0, 0];
 	}
 
@@ -6532,7 +7448,7 @@ H.depreciation_db = function (cost, sell, life, year, db)
 	var depr = 0;
 	var rest = cost - sell;
 
-	if (year < 0 || year != Math.floor(year) || life <= 0 || life > Math.pow(10, 10)) {
+	if (year < 0 || year != Math.floor(year) || life <= 0 || life > 1e10) {
 		return [H.ERROR_INTEREST, 0, 0];
 	}
 
@@ -6673,12 +7589,12 @@ H.tanh = function (arg) {
 H.feq = function (a, b, epsilon) {
 	if (a === undefined || a === null || b === undefined || b === null ||
 					H.badnumber(a) || H.badnumber(b)) {
-		// console.log("feq: bad number");
+		// window.xlog("feq: bad number");
 		return false;
 	}
 
 	if (epsilon === undefined || epsilon === null) {
-		epsilon = Math.pow(10, -10);
+		epsilon = 1e-10;
 	}
 
 	/*
@@ -6694,7 +7610,7 @@ H.feq = function (a, b, epsilon) {
 	return (A >= X && A <= Y) || (B >= X && B <= Y);
 	*/
 
-	// printf(" " + a + " " + b + " " + epsilon + " " + Math.abs(a - b) +
+	// xlog(" " + a + " " + b + " " + epsilon + " " + Math.abs(a - b) +
 	// (Math.abs(a - b) < epsilon));
 
 	return Math.abs(a - b) <= epsilon;
@@ -6740,13 +7656,13 @@ H.feq10 = function (a, b) {
 
 	if (a === 0 || b === 0) {
 		// comparison with pure zero is special case
-		epsilon = Math.pow(10, -100);
+		epsilon = 1e-100;
 	} else {
 		var order = Math.floor(Math.max(Math.log(Math.abs(b)) / Math.log(10),
-				       Math.log(Math.abs(a)) / Math.log(10))) + 1;
+				                Math.log(Math.abs(a)) / Math.log(10))) + 1;
 
 		// OR just in case order is NaN (probably never)
-		epsilon = Math.pow(10, order - 10) || Math.pow(10, -100);
+		epsilon = Math.pow(10, order - 10) || 1e-100;
 	}
 
 	return H.feq(a, b, epsilon);
@@ -6783,7 +7699,7 @@ H.feq_digits = function (a, b, precision_digits, epsilon, log)
 	epsilon *= Math.pow(10, magnitude - precision_digits - 1);
 
 	if (log) {
-		console.log(" feq_digits " + a + " " + b + " " + (a - b) + " mag=" +
+		window.xlog(" feq_digits " + a + " " + b + " " + (a - b) + " mag=" +
 				magnitude + " d=" + precision_digits +
 				" e=" + epsilon + " res " +
 				H.feq(a, b, epsilon));
@@ -6878,13 +7794,13 @@ H.stddev = function (mem)
 H.linear_regression = function (mem)
 {
 	if (mem[H.STAT_N] <= 1) {
-		// console.log("LR err type 1");
+		// window.xlog("LR err type 1");
 		return [0];
 	}
 
 	var div = mem[H.STAT_X2] - mem[H.STAT_X] * mem[H.STAT_X] / mem[H.STAT_N];
 	if (H.feq10_0(div, 0)) {
-		// console.log("LR err type 2");
+		// window.xlog("LR err type 2");
 		return [0];
 	}
 
@@ -6910,7 +7826,7 @@ H.stat_kr = function (mem, is_x, xx)
 	var res = H.linear_regression(mem);
 
 	if (! res[0]) {
-		// console.log("statkr error 1");
+		// window.xlog("statkr error 1");
 		return [0];
 	}
 
@@ -6923,7 +7839,7 @@ H.stat_kr = function (mem, is_x, xx)
 	// an equivalent test is already made at linear_regression()
 	/*
 	if (H.feq((mem[H.STAT_N] * mem[H.STAT_X2] - mem[H.STAT_X] * mem[H.STAT_X]), 0)) {
-		console.log("statkr error 2");
+		window.xlog("statkr error 2");
 		return [0];
 	}
 	*/
@@ -6931,7 +7847,7 @@ H.stat_kr = function (mem, is_x, xx)
 	var rr3 = mem[H.STAT_Y2] - mem[H.STAT_Y] * mem[H.STAT_Y] / mem[H.STAT_N];
 
 	if (H.feq10_0(rr3, 0)) {
-		// console.log("statkr error 3");
+		// window.xlog("statkr error 3");
 		return [0];
 	}
 
@@ -6941,13 +7857,13 @@ H.stat_kr = function (mem, is_x, xx)
 	/*
 	// already checked in "statkr error 2" and "statkr error 3"
 	if (rr2 === 0 || rr3 === 0) {
-		console.log("statkr error 5");
+		window.xlog("statkr error 5");
 		return [0];
 	}
 	*/
 
 	if ((rr2 * rr3) < 0) {
-		// console.log("statkr error 6");
+		// window.xlog("statkr error 6");
 		return [0];
 	}
 
@@ -6959,7 +7875,7 @@ H.stat_kr = function (mem, is_x, xx)
 
 	if (is_x) {
 		if (H.feq10_0(B, 0)) {
-			// console.log("statkr error 7");
+			// window.xlog("statkr error 7");
 			return [0];
 		}
 		c = (xx - A) / B;
@@ -7068,8 +7984,6 @@ H.stat_avgw = function (mem)
    http://www.math.sci.hiroshima-u.ac.jp/~m-mat/MT/emt.html
    email: m-mat @ math.sci.hiroshima-u.ac.jp (remove space)
 */
-
-/*jslint bitwise: false */
 
 H.Prng = function (seed)
 {
@@ -7207,10 +8121,38 @@ H.tan = function (r)
 	}
 	return res;
 };
-H.sve = 30.5;
-H.kve = "bedebc53ca7d3f29c4872712a5a316f8";
-H.kve2 = "6a49f4df7b7d90df5ec23b9585d9b6b779b80005";
+
+H.complex_ln = function (arg)
+{
+	var polar = H.complex_to_polar(arg);
+	var a_len = polar.r;
+	var a_angle = polar.i;
+
+	if (a_len === 0) {
+		// avoids a failure mode, and 0^z=0
+		return {r: 0, i: 0, h: 0, err: true};
+	}
+
+	return {r: Math.log(a_len), i: a_angle, h: 0, err: false};
+};
+
+H.complex_to_polar = function (arg)
+{
+	var len = H.complex_abs(arg).r;
+	var angle = Math.atan2(arg.i, arg.r); // always returns a valid number
+	return {r: len, i: angle, h: 0};
+};
+
+H.complex_abs = function (y)
+{
+	var real = Math.sqrt(y.r * y.r + y.i * y.i);
+	return {r: real, i: 0, h: 0};
+};
+H.sve = 37.0;
+H.kve = "331b2fc2243896da96b2fc40315e6f22";
+H.kve2 = "6608b97ff54635753af9701c0c995cfade3b67c8";
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
 
 /*global H */
 
@@ -7310,6 +8252,8 @@ Hp12c_pgrm.prototype.constructor = function ()
 	if (H.type === "15c") {
 		this.stack_size = 8;
 	}
+
+	this.sched_timer = null;
 };
 
 Hp12c_pgrm.p_encode_key = function (key, addr)
@@ -7429,15 +8373,22 @@ Hp12c_pgrm.prototype.p_del = function (modifier, key, addr)
 	--H.machine.program_size;
 };
 
+Hp12c_pgrm.prototype.log = function (msg)
+{
+	if (! H.machine.rapid) {
+		window.xlog(msg);
+	}
+};
+
 Hp12c_pgrm.prototype.p_poke = function (modifier, key, addr)
 {
 	if ((H.machine.ip + 1) >= H.ram_MAX) {
-		console.log("pgrm: IP limit bumped");
+		this.log("pgrm: IP limit bumped");
 		H.machine.display_error(H.ERROR_IP);
 		return false;
 	}
 	if (H.machine.program_size >= H.ram_MAX) {
-		console.log("pgrm: program size limit bumped");
+		this.log("pgrm: program size limit bumped");
 		H.machine.display_error(H.ERROR_IP);
 		return false;
 	}
@@ -7459,11 +8410,30 @@ Hp12c_pgrm.prototype.p_sched = function ()
 {
 	var self = this;
 
+	if (self.sched_timer) {
+		H.cancel_delay(self.sched_timer);
+		self.sched_timer = null;
+	}
+
 	if (H.machine.program_mode >= H.RUNNING) {
 		H.machine.display_pgrm();
-		H.delay(function () {
+
+		if (H.machine.modal() > 0) {
+			// call us back when exits from modal
+			window.console.ut_snap("halt ");
+			H.machine.modal_observer("p_sched", function () {
+				window.console.ut_snap("resum");
+				self.p_sched();
+			});
+			return;
+		}
+
+		H.machine.modal_observer_remove("p_sched");
+
+		self.sched_timer = H.delay(function () {
+			self.sched_timer = null;
 			self.p_execute();
-		}, this.execution_delay);
+		}, (H.machine.rapid ? 0 : self.execution_delay));
 	}
 };
 
@@ -7487,7 +8457,7 @@ Hp12c_pgrm.prototype.p_gto = function (label)
 			// label in index
 			new_ip = Math.floor(H.machine.index);
 			if (new_ip >= this.label_count) {
-				console.log("Invalid label in index: " + new_ip);
+				this.log("Invalid label in index: " + new_ip);
 				return false;
 			}
 			if (new_ip >= 10 && H.type !== "15c") {
@@ -7500,7 +8470,7 @@ Hp12c_pgrm.prototype.p_gto = function (label)
 			new_ip = Math.floor(Math.abs(H.machine.index));
 			is_label = false;
 			if (new_ip > H.machine.program_limit()) {
-				console.log("Invalid IP in index: " + new_ip);
+				this.log("Invalid IP in index: " + new_ip);
 				return false;
 			}
 		}
@@ -7510,15 +8480,15 @@ Hp12c_pgrm.prototype.p_gto = function (label)
 	}
 
 	if (is_label) {
-		console.log("GTO to label " + new_ip);
+		this.log("GTO to label " + new_ip);
 		new_ip = this.find_label(new_ip);
 		if (! new_ip) {
-			console.log("... no such label");
+			this.log("... no such label");
 			return false;
 		}
 	}
 
-	console.log("GTO to ip " + new_ip);
+	this.log("GTO to ip " + new_ip);
 	H.machine.ip = new_ip;
 	return true;
 };
@@ -7562,7 +8532,7 @@ Hp12c_pgrm.prototype.p_do_gosub = function (addr)
 		return;
 	}
 
-	console.log("GSB label " + addr + " to " + new_ip);
+	this.log("GSB label " + addr + " to " + new_ip);
 
 	this.push_stack(new_ip);
 };
@@ -7581,7 +8551,7 @@ Hp12c_pgrm.prototype.p_exec_gosub_dot = function (op)
 Hp12c_pgrm.prototype.p_exec_rtn = function (op)
 {
 	this.pop_stack();
-	console.log("RTN to " + H.machine.ip);
+	this.log("RTN to " + H.machine.ip);
 	// do nothing since p_execute() will stop if ip=0
 };
 
@@ -7664,7 +8634,7 @@ Hp12c_pgrm.prototype.find_label = function (lab)
 		}
 	}
 
-	console.log("find_label: not found " + lab);
+	this.log("find_label: not found " + lab);
 	return 0;
 };
 
@@ -7675,7 +8645,7 @@ Hp12c_pgrm.prototype.find_label_or_index = function (label_or_index)
 			// label in index
 			var label = Math.floor(H.machine.index);
 			if (label >= this.label_count) {
-				console.log("find_label_or_index: Invalid label in index: " + label);
+				this.log("find_label_or_index: Invalid label in index: " + label);
 				return 0;
 			}
 			if (label >= 10 && H.type !== "15c") {
@@ -7719,7 +8689,7 @@ Hp12c_pgrm.prototype.pop_stack = function ()
 	H.machine.call_stack.splice(H.machine.call_stack.length - 1, 1);
 
 	if (ip > H.machine.program_limit()) {
-		console.log("RTN to EOF, defaulting to 0");
+		this.log("RTN to EOF, defaulting to 0");
 		ip = 0;
 	}
 
@@ -7728,16 +8698,16 @@ Hp12c_pgrm.prototype.pop_stack = function ()
 	return true;
 };
 
+// can only be called as a deferred call from p_sched()
 Hp12c_pgrm.prototype.p_execute = function ()
 {
 	if (H.machine.program_mode < H.RUNNING) {
+		// may happen if a key is pressed between p_sched()
+		// and the deferred call to this method
 		return;
 	}
 
-	if (! H.keyboard.enabled()) { // we are inside a pause; resched to later
-		this.p_sched();
-		return;
-	}
+	window.console.ut_snap("pre  ");
 
 	if (H.machine.ip > H.machine.program_limit()) {
 		// top of RAM
@@ -7749,7 +8719,7 @@ Hp12c_pgrm.prototype.p_execute = function ()
 			this.stop(0);
 			return;
 		} else {
-			console.log("implicit RTN to " + H.machine.ip);
+			this.log("implicit RTN to " + H.machine.ip);
 		}
 	}
 
@@ -7762,7 +8732,7 @@ Hp12c_pgrm.prototype.p_execute = function ()
 	var op_txt = H.machine.ram[H.machine.ip];
 
 	// should never happen; tested by error injection in stack
-	if (! H.is_12c()) {
+	if (! H.is_12c() && H.type !== "10c") {
 		if (op_txt == H.STOP_INSTRUCTION || op_txt === "") {
 			// bumped soft end of program (GTO 00)
 			H.machine.ip = 0;
@@ -7773,12 +8743,17 @@ Hp12c_pgrm.prototype.p_execute = function ()
 
 	var op = op_txt.split(".");
 
-	var log = op_txt + "   " + H.machine.x;
-	if (H.type === "15c") {
-		log += ":" + H.machine.xi;
-		if (H.machine.xh) {
-			log += ":M";
+	var log;
+
+	if (! H.machine.rapid) {
+		log = op_txt; /* + "   " + H.machine.x;
+		if (H.type === "15c") {
+			log += ":" + H.machine.xi;
+			if (H.machine.xh) {
+				log += ":M";
+			}
 		}
+		*/
 	}
 
 	var e;
@@ -7792,24 +8767,33 @@ Hp12c_pgrm.prototype.p_execute = function ()
 
 		for (e = 0; e < op.length; ++e) {
 			if (!H.dispatcher.dispatch_common(op[e], true)) {
-				console.log("Invalid opcode for exec: " + op_txt);
+				this.log("Invalid opcode for exec: " + op_txt);
 			}
 		}
 
-		if (H.machine.program_mode >= H.RUNNING || ! H.machine.error_in_display) {
+		window.console.ut_snap("pos  ");
+
+		if (H.machine.program_mode >= H.RUNNING || ! H.machine.is_error()) {
 			// sticks at error opcode
 			++H.machine.ip;
 		}
+	} else {
+		window.console.ut_snap("posp ");
 	}
 
-	log += " -> " + H.machine.x;
-	if (H.type === "15c") {
-		log += ":" + H.machine.xi;
-		if (H.machine.xh) {
-			log += ":M";
+	if (! H.machine.rapid) {
+		/*
+		log += " -> " + H.machine.x;
+		if (H.type === "15c") {
+			log += ":" + H.machine.xi;
+			if (H.machine.xh) {
+				log += ":M";
+			}
 		}
+		*/
+
+		this.log(log);
 	}
-	console.log(log);
 
 	// instruction execution aftermath
 
@@ -7826,16 +8810,6 @@ Hp12c_pgrm.prototype.p_execute = function ()
 	// mode so they can run the programmed function
 };
 
-Hp12c_pgrm.prototype.p_run_step = function ()
-{
-	H.machine.program_mode = H.RUNNING_STEP;
-	if (H.machine.ip <= 0) {
-		H.machine.ip = 1;
-	}
-	H.machine.display_pgrm();
-	this.p_sched();
-};
-
 Hp12c_pgrm.prototype.p_run = function ()
 {
 	H.machine.program_mode = H.RUNNING;
@@ -7844,6 +8818,7 @@ Hp12c_pgrm.prototype.p_run = function ()
 		H.machine.ip = 1;
 	}
 	H.machine.display_pgrm();
+	H.display.recycle();
 	this.p_sched();
 };
 
@@ -7867,7 +8842,7 @@ Hp12c_pgrm.prototype.p_type_pr = function (key)
 	// P/R in prog. mode exits programming mode
 	H.machine.rst_modifier(1);
 	H.machine.program_mode = H.INTERACTIVE;
-	if (H.is_12c()) {
+	if (H.is_12c() || H.type === "10c") {
 		H.machine.ip = 0;
 	}
 	H.machine.display_pgrm();
@@ -8019,7 +8994,7 @@ Hp12c_pgrm.prototype.p_type_gto_move_begin = function (key)
 Hp12c_pgrm.prototype.p_type_gto_begin = function (key)
 {
 	H.machine.set_modifier(H.GTO, 1);
-	if (H.is_12c()) {
+	if (H.is_12c() || H.type === "10c") {
 		H.machine.gtoxx = "";
 	}
 	H.machine.display_program_opcode();
@@ -8067,7 +9042,7 @@ Hp12c_pgrm.prototype.type = function (key)
 	var f = H.dispatcher.find_function(key, 1, 0);
 
 	if (! f) {
-		console.log("pgrm typing: no handler for " + key);
+		this.log("pgrm typing: no handler for " + key);
 		H.machine.rst_modifier(1);
 		H.machine.display_program_opcode();
 		return false;
@@ -8085,12 +9060,8 @@ Hp12c_pgrm.prototype.stop = function (motive)
 	if (H.machine.ip > H.machine.program_limit()) {
 		H.machine.ip = 0;
 	}
-	if (H.is_12c() && H.machine.error_in_display) {
-		// in 12c, an error resets IP
-		H.machine.ip = 0;
-	}
 	H.machine.display_pgrm();
-	if (! H.machine.error_in_display) {
+	if (! H.machine.is_error()) {
 		if (H.type === "16c") {
 			H.machine.display_result_s(false, true);
 		} else {
@@ -8108,23 +9079,42 @@ Hp12c_pgrm.prototype.stop = function (motive)
 Hp12c_pgrm.prototype.sst = function ()
 {
 	if (H.machine.program_mode == H.INTERACTIVE) {
-		this.p_run_step();
+		if (H.machine.ip <= 0) {
+			H.machine.ip = 1;
+		}
+		H.machine.program_mode = H.RUNNING_STEP_PRE;
+		H.machine.display_program_opcode();
+		this.log("pgrm: SST interactive begin");
 	}
 	H.machine.rst_modifier(1);
 };
 
+// Executed when in mode RUNNING_STEP_PRE and user presses a key
+// (this exceptional case is handled by hp1xc_dispatch)
+Hp12c_pgrm.prototype.run_step_finish = function ()
+{
+	var self = this;
+	this.log("pgrm: SST interactive end+run");
+
+	H.machine.program_mode = H.RUNNING_STEP;
+	// unlikely
+	H.machine.ip = (H.machine.ip <= 0) ? 1 : H.machine.ip;
+
+	H.machine.display_pgrm();
+	H.machine.display_modifier();
+	this.p_sched();
+};
+
 Hp12c_pgrm.prototype.bst = function ()
 {
+	var self = this;
+
 	if (H.machine.ip > 0) {
 		--H.machine.ip;
 	}
-	H.machine.display_program_opcode();
-	H.machine.cli("bst");
-
-	H.delay(function () {
-		H.machine.prog_bst_after();
-	}, this.execution_delay);
 	H.machine.rst_modifier(1);
+	H.machine.display_program_opcode();
+	H.machine.enter_modal(H.MODAL_PRESS);
 };
 
 Hp12c_pgrm.prototype.gto = function (label)
@@ -8143,7 +9133,12 @@ Hp12c_pgrm.prototype.gto = function (label)
 
 Hp12c_pgrm.prototype.label = function (label)
 {
-	console.log("LBL #" + label);
+	this.log("LBL #" + label);
+	if (H.type === "16c") {
+		H.machine.display_result_s(false, true);
+	} else {
+		H.machine.display_result();
+	}
 };
 
 Hp12c_pgrm.prototype.gosub = function (label)
@@ -8184,7 +9179,7 @@ Hp12c_pgrm.prototype.user = function (label)
 	this.clean_stack();
 	H.machine.ip = new_ip;
 
-	console.log("USER: exec from ip " + H.machine.ip);
+	this.log("USER: exec from ip " + H.machine.ip);
 
 	this.p_run();
 };
@@ -8247,6 +9242,10 @@ Hp12c_pgrm.prototype.disassemble = function (opcode)
 		if (opcode.substr(0, 6) === "43.33.") {
 			return "GTO " + opcode.substr(6);
 		}
+	} else if (H.type === "10c") {
+		if (opcode.substr(0, 3) === "22.") {
+			return "GTO " + opcode.substr(3);
+		}
 	}
 
 	if (!this.dis_table[opcode]) {
@@ -8272,11 +9271,12 @@ Hp12c_pgrm.prototype.slow = function ()
 	}
 };
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
 /*global H */
 
 "use strict";
@@ -8313,7 +9313,7 @@ Hp12c_storage.prototype.compress_opcode = function (op)
 			return self.compress_opcode(H.STOP_INSTRUCTION);
 		}
 	}
-	return c_op;
+	return c_op.toString();
 };
 
 Hp12c_storage.prototype.decompress_opcode = function (c_op)
@@ -8400,6 +9400,7 @@ Hp12c_storage.prototype.marshal_array = function (a, type)
 			data = self.compress_opcode(data);
 		}
 		mtxt += "!" + data;
+		mtxt = mtxt.toString();
 	}
 
 	return mtxt;
@@ -8524,8 +9525,8 @@ Hp12c_storage.prototype.recover_memory2 = function (target, sserial)
 
 	// calculate program_size
 	H.machine.program_size = 1;
-	for (e = 1; e < H.ram_MAX; ++e) {
-		if (H.machine.ram[e] != H.STOP_INSTRUCTION) {
+	for (var ee = 1; ee < H.ram_MAX; ++ee) {
+		if (H.machine.ram[ee] != H.STOP_INSTRUCTION) {
 			H.machine.program_size += 1;
 		} else {
 			break;
@@ -8549,11 +9550,12 @@ Hp12c_storage.prototype.set_memory = function (txt)
 	self.recover_memory2(H.machine, txt);
 };
 /* HP-12C emulator 
- * Copyright (c) 2011 EPx.com.br.
+ * Copyright (c) 2007, 2011, 2016 Elvis Pfutzenreuter - epxx.co.
  * All rights reserved.
  */
 
 /*jslint white: true, undef: true, nomen: true, regexp: true, strict: true, browser: true, bitwise: true */
+/*jshint globalstrict: true*/
 /*global H, Hp12c_display, Hp12c_keyboard, Hp12c_debug, Hp12c_machine, Hp12c_storage, Hp12c_dispatcher, Hp12c_pgrm */
 
 "use strict";
@@ -8572,7 +9574,7 @@ function Init_hp12c()
 	H.display = new Hp12c_display();
 	H.keyboard = new Hp12c_keyboard();
 	H.debug = new Hp12c_debug(function (t) {
-		return H.display.format_result_tuple(t);
+		return H.format_result_tuple(t);
 	});
 	H.machine = new Hp12c_machine();
 	H.dispatcher = new Hp12c_dispatcher();

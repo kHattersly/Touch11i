@@ -1,0 +1,15 @@
+#!/bin/bash
+
+convert icon1024.png -resize '120x120!' icon120.png
+convert icon1024.png -resize '152x152!' icon152.png
+convert icon1024.png -resize '512x512!' icon512.png
+convert icon1024.png -resize '120x120!' iconhi120.png
+convert icon1024.png -resize '114x114!' iconhi.png
+convert icon1024.png -resize '72x72!' iconipad.png
+convert icon1024.png -resize '144x144!' iconipad2.png
+convert icon1024.png -resize '57x57!' iconlo.png
+convert icon1024.png -resize '80x80!' icon80.png
+convert icon1024.png -resize '58x58!' icon58.png
+convert icon1024.png -resize '29x29!' icon29.png
+convert icon1024.png -resize '76x76!' icon76.png
+convert icon1024.png -resize '167x167!' icon167.png

@@ -9,6 +9,9 @@
 #import "epx11cAppDelegate.h"
 #import "epx11cViewController.h"
 
+#define SYSTEM_VERSION_GREATER_THAN(v) ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] == NSOrderedDescending)
+#define SYSTEM_VERSION_LESS_THAN(v)                 ([[[UIDevice currentDevice] systemVersion] compare:v options:NSNumericSearch] == NSOrderedAscending)
+
 @implementation epx11cAppDelegate
 
 @synthesize window = _window;
@@ -19,14 +22,19 @@
 #pragma mark Application lifecycle
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions {    
+    double pheight = [UIScreen mainScreen].bounds.size.height;
+    if ([UIScreen mainScreen].bounds.size.width > pheight) {
+        // make sure we get the portrait-wise height
+        pheight = [UIScreen mainScreen].bounds.size.width;
+    }
     self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
-    if ([UIScreen mainScreen].bounds.size.height == 568) {
+    if (pheight >= 568.0f) {
         self.viewController = [[epx11cViewController alloc] initWithNibName:@"epx11cViewController_iPhone5" bundle:nil];
     } else {
         self.viewController = [[epx11cViewController alloc] initWithNibName:@"epx11cViewController" bundle:nil];
     }
     self.window.rootViewController = self.viewController;
-    application.statusBarStyle = UIStatusBarStyleBlackOpaque;
+    application.statusBarStyle = UIStatusBarStyleLightContent;
     [self.window makeKeyAndVisible];
     return YES;
 }

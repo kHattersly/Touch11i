@@ -1,8 +1,13 @@
 H.disp_theo_width = 1024.0;
 H.disp_theo_height = 662.0;
-H.disp_key_offset_x = 8.0;
-H.disp_key_offset_y = 210.0;
-H.disp_key_width = 79;
-H.disp_key_height = 69;
-H.disp_key_dist_x = (941.0 - 8.0) / 9;
-H.disp_key_dist_y = (554.0 - 210.0) / 3;
+H.disp_key_offset_x = -4;
+H.disp_key_offset_y = 216.0;
+H.disp_key_dist_x = 103.5;
+H.disp_key_dist_y = 115;
+H.disp_key_width = H.disp_key_dist_x;
+H.disp_key_height = H.disp_key_dist_y;
+
+H.disp_fb_offset_x = 15;
+H.disp_fb_offset_y = 26;
+H.disp_fb_width = 75;
+H.disp_fb_height = 60;

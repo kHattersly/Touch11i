@@ -10,23 +10,21 @@
 #import <Foundation/Foundation.h>
 #import <AudioToolbox/AudioToolbox.h>
 
-@interface epx11cViewController : UIViewController <UIWebViewDelegate> {
+@interface epx11cViewController : UIViewController <UIWebViewDelegate,UIPickerViewDataSource, UIPickerViewDelegate> {
     SystemSoundID audio_id;
     SystemSoundID audio2_id;
-    IBOutlet UIView *view_p;
-    IBOutlet UIView *view_l;
     IBOutlet UIWebView *html;
-    int click;
-    int comma;
-    int layout;
-    int old_layout;
+    NSInteger click;
+    NSInteger separator;
+    NSInteger fb;
+    NSInteger rapid;
+    NSInteger layout;
+    NSInteger old_layout;
     BOOL splash_fadedout;
+    NSInteger lock;
     BOOL iphone5;
-    int lock;
+    NSMutableDictionary *memories;
 }
-
-@property (nonatomic, retain) IBOutlet UIView *view_p;
-@property (nonatomic, retain) IBOutlet UIView *view_l;
 
 - (void) playClick;
 - (BOOL) webView:(UIWebView *)view shouldStartLoadWithRequest:(NSURLRequest *)request 

@@ -1,5 +1,7 @@
 var avirgin = true;
-var comma_status = 0;
+var separator_status = 0;
+var fb_status = 1;
+var request_settings = 0;
 
 Hp12c_storage.prototype.save = function() {
 	localStorage.setItem('EPX11C', H.storage.save_memory2(H.machine));
@@ -22,7 +24,7 @@ Hp12c_machine.prototype.apocryphal = function (i)
 };
 
 var old_dispatch = Hp12c_dispatcher.prototype.dispatch;
-var old_show = Hp12c_display.prototype.show;
+var old_show = Hp12c_display.prototype.private_show;
 
 Hp12c_dispatcher.prototype.dispatch = function (k)
 {
@@ -30,12 +32,17 @@ Hp12c_dispatcher.prototype.dispatch = function (k)
 	if (!avirgin) {
 		H.storage.save();
 	}
-    if (comma_status != H.machine.comma) {
-        comma_status = H.machine.comma;
-        if (comma_status) {
-            document.location = "epx11c:commaon:1";
+    if (request_settings) {
+        request_settings = 0;
+        document.location = "epx11c:settings:1";
+        return;
+    }
+    if (fb_status != H.machine.fb) {
+        fb_status = H.machine.fb;
+        if (fb_status) {
+            document.location = "epx11c:fbon:1";
         } else {
-            document.location = "epx11c:commaoff:0";        
+            document.location = "epx11c:fboff:0";
         }
         return;
     }
@@ -46,23 +53,37 @@ Hp12c_dispatcher.prototype.dispatch = function (k)
     }
 }
 
-function ios_comma_on()
+// disables ON as decimal separator toggler
+Hp12c_dispatcher.prototype.functions[41][0] = function () {
+    request_settings = 1;
+};
+Hp12c_dispatcher.prototype.functions[41][0].no_pgrm = 1;
+
+function ios_separator(sep)
 {
-    if (!H.machine.comma) {
+    while (H.machine.comma !== sep) {
         H.machine.toggle_decimal_character();
     }
-    comma_status = H.machine.comma;
+    separator_status = H.machine.comma;
 }
 
-function ios_comma_off()
+function ios_fb_on()
 {
-    if (H.machine.comma) {
-        H.machine.toggle_decimal_character();        
+    if (!H.machine.fb) {
+        H.machine.toggle_feedback();
     }
-    comma_status = H.machine.comma;    
+    fb_status = H.machine.fb;
 }
 
-Hp12c_display.prototype.show = function (s)
+function ios_fb_off()
+{
+    if (H.machine.fb) {
+        H.machine.toggle_feedback();
+    }
+    fb_status = H.machine.fb;
+}
+
+Hp12c_display.prototype.private_show = function (s)
 {
 	old_show.call(H.display, s);
 	if (!avirgin) {
@@ -70,24 +91,79 @@ Hp12c_display.prototype.show = function (s)
 	}
 }
 
-/*
-window.addEventListener("load",function() {
-  // Set a timeout...
-  setTimeout(function(){
-    // Hide the address bar!
-    window.scrollTo(0, 1);
-  }, 0);
-});
-*/
+  
+Hp12c_dispatcher.prototype.functions[16][44] = function () {
+    dontclick = 1;
+    document.location = "epx11c:savemem:" + H.storage.save_memory2(H.machine);
+};
 
-/*
-// Coords specified by another file
-H.disp_theo_width = 1024.0;
-H.disp_theo_height = 662.0;
-H.disp_key_offset_x = 8.0;
-H.disp_key_offset_y = 210.0;
-H.disp_key_width = 79;
-H.disp_key_height = 69;
-H.disp_key_dist_x = (941.0 - 8.0) / 9;
-H.disp_key_dist_y = (554.0 - 210.0) / 3;
-*/
+Hp12c_dispatcher.prototype.functions[16][44].no_pgrm = 1;
+
+Hp12c_dispatcher.prototype.functions[26][45] = function () {
+    dontclick = 1;
+    document.location = "epx11c:loadmem:1"
+};
+
+Hp12c_dispatcher.prototype.functions[26][45].no_pgrm = 1;
+
+Hp12c_dispatcher.prototype.functions[26][4543] = function () {
+    dontclick = 1;
+    document.location = "epx11c:delmem:1"
+};
+
+Hp12c_dispatcher.prototype.functions[26][4543].no_pgrm = 1;
+
+function loadmem(sserial)
+{
+    if (sserial && sserial.length > 0) {
+        H.storage.recover_memory2(H.machine, sserial);
+        H.machine.display_all();
+    }
+    avirgin = false;
+}
+
+Hp12c_machine.prototype.easter_egg = function () {};
+
+function ios_set_rapid(is_rapid)
+{
+    if (is_rapid) {
+            H.machine.rapid_on();
+    } else {
+            H.machine.rapid_off();
+    }
+}
+
+Hp12c_dispatcher.prototype.lcd_left = function ()
+{
+    if (!window.ipad_canary) {
+        show_back();
+    }
+}
+
+Hp12c_dispatcher.prototype.lcd_right = function ()
+{
+    if (!window.ipad_canary) {
+        show_back();
+    }
+}
+
+function show_back()
+{
+    var img = "back.png";
+    if (H.vertical_layout) {
+        img = "backv.png";
+    }
+    
+    var div = document.createElement('back');
+    div.style.position = "fixed";
+    div.style.left = "0px";
+    div.style.top = "0px";
+    div.style.width = "100%";
+    div.style.opacity = "0.8";
+    div.style.zIndex = 100;
+    div.innerHTML = '<img src=' + img + ' style="width: 100%">';
+    div.ontouchstart = function () {
+        div.parentNode.removeChild(div);
+    };
+    document.body.appendChild(div); // append to main body
+}
